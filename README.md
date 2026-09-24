@@ -161,11 +161,21 @@ It opens full screen like a native app. On iPhone, the home screen app keeps its
 
 Budget amounts per period are not part of the CSV. Set them on the **Period Budget** screen for your first period. Each new period copies the one before it.
 
+## Tracking your stocks
+
+The **Portfolio** page (under **More** on a phone) tracks stocks and ETFs with live prices from [Finnhub](https://finnhub.io)'s free plan.
+
+1. Create a free account at https://finnhub.io/register and copy the API key from your Finnhub dashboard.
+2. Open **Portfolio**, tap **Add API key**, and paste it. It is saved with the rest of your data, so only you can read it.
+3. Tap **Add stock** and enter the ticker, how many shares you own, and the average price you paid per share. If you buy more later, edit the line with the new totals.
+
+The page shows market value, total gain or loss, today's change, what you paid, a line per holding, and how your money is split between them. Each day you open the page it saves that day's total, and the **Value over time** chart is built from those saved days, so it starts on the day you begin using it. Prices can be delayed and are for tracking only.
+
 ## Backups
 
 Everything already lives in Firestore, but you can keep your own copies:
 
-- **Settings > Full backup (JSON)** saves everything: settings, every period budget, transactions, wishlist, and planning lines.
+- **Settings > Full backup (JSON)** saves everything: settings, every period budget, transactions, wishlist, planning lines, and your portfolio.
 - **Restore JSON backup** replaces all current data with a backup (it asks first).
 - Transactions and wishlist can also be exported as CSV to open in a spreadsheet.
 
@@ -223,7 +233,7 @@ src/
   store/data.tsx          <- live sync with Firestore, all saves and deletes
   store/ui.tsx            <- toasts, confirm + undo, add-transaction sheet
   components/             <- layout, navigation, sheets, charts, shared pieces
-  pages/                  <- Dashboard, Period Budget, Annual, Wishlist, Planning, Settings
+  pages/                  <- Dashboard, Period Budget, Annual, Wishlist, Portfolio, Planning, Settings
 firestore.rules           <- paste your UID, then publish in the Firebase console
 .github/workflows/        <- GitHub Pages deploy
 public/icons/             <- app icons for the home screen
@@ -235,6 +245,7 @@ Firestore layout, all under `users/{your uid}/`:
 - `meta/planning` holds the planning scratchpad lines
 - `periods/{YYYY-MM}` holds that period's budget lines
 - `transactions/{id}` and `wishlist/{id}` hold one document each
+- `holdings/{id}` holds one stock or ETF each, and `portfolioHistory/{YYYY-MM-DD}` holds that day's portfolio total
 
 ## Handy commands
 

@@ -33,6 +33,8 @@ export interface Settings {
   wishlistRooms: string[];
   /** First period shown in overviews, "YYYY-MM". */
   startPeriod: string;
+  /** Free Finnhub API key for stock quotes. Empty until the user adds one. */
+  finnhubKey: string;
 }
 
 /** One budget line inside a period. Category can differ from the sub's default. */
@@ -85,4 +87,21 @@ export interface PlanLine {
 
 export interface Planning {
   lines: PlanLine[];
+}
+
+/** One stock or ETF position: total shares and the average price paid per share. */
+export interface Holding {
+  id: string;
+  symbol: string; // uppercase ticker, e.g. "VOO"
+  shares: number;
+  avgCost: number;
+  notes: string;
+  createdAt?: number;
+}
+
+/** Portfolio totals for one day. The doc id is the local date "YYYY-MM-DD". */
+export interface PortfolioSnapshot {
+  id: string;
+  value: number;
+  cost: number;
 }
