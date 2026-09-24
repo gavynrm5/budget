@@ -3,7 +3,7 @@ import { normalizeDate, parseCSV, toCSV } from "./csv";
 import { round2 } from "./money";
 import { txPeriod } from "./calc";
 import { accountLabel } from "./accounts";
-import type { Account, Category, Settings, SubCategory, Transaction, WishItem } from "./types";
+import type { Account, Category, Settings, SubCategory, Transaction, WishItem, WishList } from "./types";
 
 export const TX_HEADERS = ["Date", "Amount", "Category", "Sub-Category", "Description", "Notes"];
 
@@ -30,10 +30,17 @@ export function matchAccount(raw: string, accounts: Account[]): Account | null {
   return byName.length === 1 ? byName[0] : null;
 }
 
-export function wishlistToCSV(items: WishItem[]): string {
+export function wishlistToCSV(items: WishItem[], lists: WishList[]): string {
+  const listOf = (id?: string) => lists.find((l) => l.id === id);
+  const sorted = [...items].sort((a, b) => (listOf(a.listId)?.order ?? 0) - (listOf(b.listId)?.order ?? 0) || a.order - b.order);
   return toCSV(
-    ["Item", "Category", "Room", "Status", "Price", "Qty", "Total", "Link", "Notes"],
-    items.map((w) => [w.item, w.category, w.room, w.status, w.price.toFixed(2), w.qty ?? "", (w.price * (w.qty ?? 1)).toFixed(2), w.link, w.notes])
+    ["List", "Item", "Price", "Qty", "Total", "Bought", "Details", "Link", "Image", "Notes"],
+    sorted.map((w) => {
+      const l = listOf(w.listId);
+      const details = (l?.fields ?? []).map((f) => (w.values?.[f.id] ? `${f.name}: ${w.values[f.id]}` : "")).filter(Boolean).join("; ");
+      const image = w.image?.startsWith("data:") ? "(uploaded photo)" : w.image ?? "";
+      return [l?.name ?? "", w.item, w.price.toFixed(2), w.qty ?? "", (w.price * (w.qty ?? 1)).toFixed(2), w.bought ? "Yes" : "", details, w.link, image, w.notes];
+    })
   );
 }
 

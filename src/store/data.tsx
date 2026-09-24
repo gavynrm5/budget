@@ -17,7 +17,8 @@ import { periodsBetween, resolveBudget } from "../lib/calc";
 import { currentPeriodId } from "../lib/periods";
 import { toISODate } from "../lib/periods";
 import { tradesFromLegacy } from "../lib/portfolio";
-import type { ExtraIncome, LegacyHolding, LineItem, PeriodBudget, Planning, Settings, SubCategory, Trade, Transaction, Transfer, WishItem } from "../lib/types";
+import type { ExtraIncome, LegacyHolding, LineItem, PeriodBudget, Planning, Settings, SubCategory, Trade, Transaction, Transfer, WishItem, WishList } from "../lib/types";
+import { legacyToList } from "../lib/wishlist";
 import { useUI } from "./ui";
 
 export interface Backup {
@@ -35,6 +36,7 @@ export interface Backup {
   holdings?: LegacyHolding[];
   transfers?: Transfer[];
   extraIncome?: ExtraIncome[];
+  wishLists?: WishList[];
 }
 
 interface DataContextValue {
@@ -46,6 +48,7 @@ interface DataContextValue {
   periods: Record<string, PeriodBudget>;
   transactions: Transaction[];
   wishlist: WishItem[];
+  wishLists: WishList[];
   planning: Planning;
   trades: Trade[];
   transfers: Transfer[];
@@ -61,6 +64,8 @@ interface DataContextValue {
   addTransactions: (txs: Transaction[], newSubs: SubCategory[]) => Promise<void>;
   saveWish: (w: WishItem) => void;
   deleteWish: (id: string) => void;
+  saveWishList: (l: WishList) => void;
+  deleteWishList: (id: string) => void;
   savePlanning: (p: Planning) => void;
   saveTrade: (t: Trade) => void;
   deleteTrade: (id: string) => void;
@@ -88,6 +93,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [periods, setPeriods] = useState<Record<string, PeriodBudget>>({});
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [wishlist, setWishlist] = useState<WishItem[]>([]);
+  const [wishLists, setWishLists] = useState<WishList[]>([]);
+  const wishServer = useRef({ items: false, lists: false });
+  const wishMigratedRef = useRef(false);
   const [planning, setPlanning] = useState<Planning>(defaultPlanning);
   const [trades, setTrades] = useState<Trade[]>([]);
   const [transfers, setTransfers] = useState<Transfer[]>([]);
@@ -144,6 +152,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setDenied(false);
     ensuredRef.current = false;
     migratedRef.current = false;
+    wishMigratedRef.current = false;
+    wishServer.current = { items: false, lists: false };
     setLegacyHoldings(null);
     serverSeen.current = { settings: false, periods: false };
     const markLoaded = (k: string) => setLoadedParts((s) => (s.has(k) ? s : new Set(s).add(k)));
@@ -193,7 +203,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
       onSnapshot(col("wishlist"), opts, (snap) => {
         markPending("wishlist", snap.metadata.hasPendingWrites);
         setWishlist(snap.docs.map((d) => ({ ...(d.data() as Omit<WishItem, "id">), id: d.id })).sort((a, b) => a.order - b.order));
+        if (!snap.metadata.fromCache) wishServer.current.items = true;
         markLoaded("wishlist");
+      }, onErr),
+      onSnapshot(col("wishLists"), opts, (snap) => {
+        markPending("wishLists", snap.metadata.hasPendingWrites);
+        setWishLists(
+          snap.docs
+            .map((d) => {
+              const l = d.data() as Omit<WishList, "id">;
+              return { ...l, fields: l.fields ?? [], id: d.id };
+            })
+            .sort((a, b) => a.order - b.order)
+        );
+        if (!snap.metadata.fromCache) wishServer.current.lists = true;
+        markLoaded("wishLists");
       }, onErr),
       onSnapshot(col("trades"), opts, (snap) => {
         markPending("trades", snap.metadata.hasPendingWrites);
@@ -221,7 +245,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return () => unsubs.forEach((u) => u());
   }, [uid, base, col, fire]);
 
-  const loaded = loadedParts.size >= 8;
+  const loaded = loadedParts.size >= 9;
 
   // Roll periods forward: once server data is known, save a budget for every
   // period from the last saved one through the current period, each copied
@@ -265,6 +289,30 @@ export function DataProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => { if (n) fire(batch.commit()); });
   }, [loaded, uid, legacyHoldings, base, col, fire]);
+
+  // Move items from the first, single wishlist into a "Furniture" list with
+  // its own budget line. Runs once, and only on data confirmed by the server.
+  useEffect(() => {
+    if (!db || !uid || !loaded || wishMigratedRef.current) return;
+    if (!wishServer.current.items || !wishServer.current.lists || !serverSeen.current.settings) return;
+    wishMigratedRef.current = true;
+    const loose = wishlist.filter((w) => !w.listId);
+    if (wishLists.length || (!loose.length && !settings.wishlistSaved)) return;
+    const { list, items, sub } = legacyToList(settings, loose);
+    const batch = writeBatch(db);
+    batch.set(base("wishLists", list.id), stripId(list));
+    items.forEach((w) => batch.set(base("wishlist", w.id), stripId(w)));
+    if (!settings.subCategories.some((x) => x.id === sub.id)) {
+      const subCategories = [...settings.subCategories, sub];
+      setSettings((cur) => ({ ...cur, subCategories }));
+      batch.set(base("meta", "settings"), { subCategories }, { merge: true });
+    }
+    const cur = periods[currentPeriodId()];
+    if (cur && !cur.lineItems.some((li) => li.subId === sub.id)) {
+      batch.set(base("periods", cur.id), { lineItems: [...cur.lineItems, { id: `li-${sub.id}`, subId: sub.id, category: "Savings", budgeted: 0 }] });
+    }
+    fire(batch.commit());
+  }, [loaded, uid, wishlist, wishLists, settings, periods, base, fire]);
 
   const newId = useCallback(() => (db && uid ? doc(col("transactions")).id : Math.random().toString(36).slice(2)), [uid, col]);
 
@@ -318,6 +366,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const saveWish = useCallback((w: WishItem) => fire(setDoc(base("wishlist", w.id), stripId(w))), [base, fire]);
   const deleteWish = useCallback((id: string) => fire(deleteDoc(base("wishlist", id))), [base, fire]);
+  const saveWishList = useCallback(
+    (l: WishList) => fire(setDoc(base("wishLists", l.id), stripId({ ...l, createdAt: l.createdAt ?? Date.now() }))),
+    [base, fire]
+  );
+  const deleteWishList = useCallback((id: string) => fire(deleteDoc(base("wishLists", id))), [base, fire]);
 
   const savePlanning = useCallback(
     (p: Planning) => {
@@ -353,12 +406,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       periods: Object.values(periods),
       transactions,
       wishlist,
+      wishLists,
       planning,
       trades,
       transfers,
       extraIncome
     }),
-    [settings, periods, transactions, wishlist, planning, trades, transfers, extraIncome]
+    [settings, periods, transactions, wishlist, wishLists, planning, trades, transfers, extraIncome]
   );
 
   const replaceAll = useCallback(
@@ -372,6 +426,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (restored) trades.forEach((t) => ops.push({ ref: base("trades", t.id) }));
       if (b.transfers) transfers.forEach((t) => ops.push({ ref: base("transfers", t.id) }));
       if (b.extraIncome) extraIncome.forEach((x) => ops.push({ ref: base("extraIncome", x.id) }));
+      if (b.wishLists) wishLists.forEach((l) => ops.push({ ref: base("wishLists", l.id) }));
       ops.push({ ref: base("meta", "settings"), data: { ...defaultSettings(), ...b.settings } });
       ops.push({ ref: base("meta", "planning"), data: b.planning ?? defaultPlanning() });
       b.periods.forEach((p) => ops.push({ ref: base("periods", p.id), data: { lineItems: p.lineItems } }));
@@ -380,12 +435,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       restored?.forEach((t) => ops.push({ ref: base("trades", t.id), data: stripId(t) }));
       b.transfers?.forEach((t) => ops.push({ ref: base("transfers", t.id), data: stripId(t) }));
       b.extraIncome?.forEach((x) => ops.push({ ref: base("extraIncome", x.id), data: stripId(x) }));
+      b.wishLists?.forEach((l) => ops.push({ ref: base("wishLists", l.id), data: stripId(l) }));
       // Deletes first, then sets, so a restored doc with the same id survives.
       const deletes = ops.filter((o) => !o.data);
       const sets = ops.filter((o) => o.data);
       await chunkedWrite([...deletes, ...sets]);
     },
-    [transactions, wishlist, periods, trades, transfers, extraIncome, base, chunkedWrite]
+    [transactions, wishlist, wishLists, periods, trades, transfers, extraIncome, base, chunkedWrite]
   );
 
   const value: DataContextValue = {
@@ -397,6 +453,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     periods,
     transactions,
     wishlist,
+    wishLists,
     planning,
     trades,
     transfers,
@@ -412,6 +469,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addTransactions,
     saveWish,
     deleteWish,
+    saveWishList,
+    deleteWishList,
     savePlanning,
     saveTrade,
     deleteTrade,
