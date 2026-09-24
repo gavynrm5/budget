@@ -51,10 +51,10 @@ describe("period calculations", () => {
 
   it("seeds fixed expenses and income", () => {
     const c = computePeriod("2026-03", periods, [], s);
-    expect(c.income).toBe(5482);
-    expect(c.groups.Essentials.budgeted).toBe(2690.98); // 1813.98 + 500 + 227 + 150
-    expect(c.groups.Essentials.targetAmount).toBe(2741); // 50% of 5482
-    expect(c.unallocated).toBe(2791.02);
+    expect(c.income).toBe(4000);
+    expect(c.groups.Essentials.budgeted).toBe(2120); // 1500 + 350 + 150 + 120
+    expect(c.groups.Essentials.targetAmount).toBe(2000); // 50% of 4000
+    expect(c.unallocated).toBe(1880);
   });
 
   it("computes line, group and total figures", () => {
@@ -76,7 +76,7 @@ describe("period calculations", () => {
     expect(gas.pctUsed).toBeNull(); // budgeted 0 shows "-"
     expect(c.groups.Essentials.spent).toBe(450);
     expect(c.totalSpent).toBe(450);
-    expect(c.leftFromIncome).toBe(5032);
+    expect(c.leftFromIncome).toBe(3550); // 4000 - 450
   });
 
   it("sums group spent by category, not by sub-category", () => {
@@ -100,7 +100,7 @@ describe("period calculations", () => {
   it("copies the previous period for unsaved periods", () => {
     const c = computePeriod("2026-07", periods, [], s);
     expect(c.virtual).toBe(true);
-    expect(c.totalBudgeted).toBe(2690.98);
+    expect(c.totalBudgeted).toBe(2120);
   });
 
   it("status thresholds", () => {
@@ -144,7 +144,7 @@ describe("applying fixed expenses", () => {
     expect(line(r.lineItems, "rent")?.budgeted).toBe(1900);
     expect(r.updated).toEqual(["Rent / Mortgage"]);
     expect(r.subCategories).toBeNull();
-    expect(line(items, "rent")?.budgeted).toBe(1813.98); // input untouched
+    expect(line(items, "rent")?.budgeted).toBe(1500); // input untouched
   });
 
   it("adds a line for a sub-category the period doesn't have", () => {
@@ -171,7 +171,7 @@ describe("applying fixed expenses", () => {
   });
 
   it("reports lines already at the right amount and skips blank names", () => {
-    const r = applyFixedExpenses(items, [{ id: "a", name: "Car Payment", amount: 500 }, { id: "b", name: "  ", amount: 9 }], s.subCategories, id);
+    const r = applyFixedExpenses(items, [{ id: "a", name: "Car Payment", amount: 350 }, { id: "b", name: "  ", amount: 9 }], s.subCategories, id);
     expect(r.unchanged).toEqual(["Car Payment"]);
     expect(r.updated).toEqual([]);
     expect(r.added).toEqual([]);
