@@ -163,13 +163,22 @@ Budget amounts per period are not part of the CSV. Set them on the **Period Budg
 
 ## Tracking your stocks
 
-The **Portfolio** page (under **More** on a phone) tracks stocks and ETFs with live prices from [Finnhub](https://finnhub.io)'s free plan.
+The **Portfolio** page (under **More** on a phone) tracks stocks and ETFs with live and past prices from [Twelve Data](https://twelvedata.com)'s free plan.
 
-1. Create a free account at https://finnhub.io/register and copy the API key from your Finnhub dashboard.
+1. Create a free account at https://twelvedata.com/register and copy your API key from the Twelve Data dashboard.
 2. Open **Portfolio**, tap **Add API key**, and paste it. It is saved with the rest of your data, so only you can read it.
-3. Tap **Add stock** and enter the ticker, how many shares you own, and the average price you paid per share. If you buy more later, edit the line with the new totals.
+3. Tap **Add trade** for each order in your brokerage history: bought or sold, the date, the number of shares, and the price per share. In Robinhood these are under **Account > History**. Buying more of a stock you own is just another buy.
 
-The page shows market value, total gain or loss, today's change, what you paid, a line per holding, and how your money is split between them. Each day you open the page it saves that day's total, and the **Value over time** chart is built from those saved days, so it starts on the day you begin using it. Prices can be delayed and are for tracking only.
+What you get:
+
+- **Summary:** market value, gain or loss on what you hold, today's change, the amount invested, and gains locked in by sales.
+- **Value over time:** your portfolio's value on every trading day since your first buy, against the amount invested, with each buy and sale marked.
+- **A page per stock:** tap a stock for its price history (up to 5 years) with your trades marked, a chart of what your own shares were worth, and its list of trades.
+- **Sold positions** and an **activity** list of every trade, with edit and delete.
+
+Gains use the average cost method, the same one Robinhood shows. A sale can't sell more shares than you owned on that date. Prices can be delayed and are for tracking only.
+
+The free plan allows 8 price requests a minute and 800 a day. Each stock uses about two a day, because prices are saved on the device: live quotes for a minute and past prices for the day. If the per-minute limit is reached, the page waits a minute and loads the rest by itself.
 
 ## Backups
 
@@ -245,7 +254,7 @@ Firestore layout, all under `users/{your uid}/`:
 - `meta/planning` holds the planning scratchpad lines
 - `periods/{YYYY-MM}` holds that period's budget lines
 - `transactions/{id}` and `wishlist/{id}` hold one document each
-- `holdings/{id}` holds one stock or ETF each, and `portfolioHistory/{YYYY-MM-DD}` holds that day's portfolio total
+- `trades/{id}` holds one buy or sale each
 
 ## Handy commands
 

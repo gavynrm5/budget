@@ -4,6 +4,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   setDoc,
   writeBatch,
@@ -14,7 +15,9 @@ import { auth, db } from "../lib/firebase";
 import { defaultPlanning, defaultSettings } from "../lib/defaults";
 import { periodsBetween, resolveBudget } from "../lib/calc";
 import { currentPeriodId } from "../lib/periods";
-import type { Holding, LineItem, PeriodBudget, Planning, PortfolioSnapshot, Settings, SubCategory, Transaction, WishItem } from "../lib/types";
+import { toISODate } from "../lib/periods";
+import { tradesFromLegacy } from "../lib/portfolio";
+import type { LegacyHolding, LineItem, PeriodBudget, Planning, Settings, SubCategory, Trade, Transaction, WishItem } from "../lib/types";
 import { useUI } from "./ui";
 
 export interface Backup {
@@ -27,8 +30,9 @@ export interface Backup {
   wishlist: WishItem[];
   planning: Planning;
   // Added with the portfolio page; missing in older backups.
-  holdings?: Holding[];
-  portfolioHistory?: PortfolioSnapshot[];
+  trades?: Trade[];
+  /** First portfolio version, converted to trades on restore. */
+  holdings?: LegacyHolding[];
 }
 
 interface DataContextValue {
@@ -41,8 +45,7 @@ interface DataContextValue {
   transactions: Transaction[];
   wishlist: WishItem[];
   planning: Planning;
-  holdings: Holding[];
-  portfolioHistory: PortfolioSnapshot[];
+  trades: Trade[];
   pending: boolean;
   online: boolean;
   newId: () => string;
@@ -55,9 +58,8 @@ interface DataContextValue {
   saveWish: (w: WishItem) => void;
   deleteWish: (id: string) => void;
   savePlanning: (p: Planning) => void;
-  saveHolding: (h: Holding) => void;
-  deleteHolding: (id: string) => void;
-  saveSnapshot: (s: PortfolioSnapshot) => void;
+  saveTrade: (t: Trade) => void;
+  deleteTrade: (id: string) => void;
   exportAll: () => Backup;
   replaceAll: (b: Backup) => Promise<void>;
 }
@@ -79,8 +81,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [wishlist, setWishlist] = useState<WishItem[]>([]);
   const [planning, setPlanning] = useState<Planning>(defaultPlanning);
-  const [holdings, setHoldings] = useState<Holding[]>([]);
-  const [portfolioHistory, setPortfolioHistory] = useState<PortfolioSnapshot[]>([]);
+  const [trades, setTrades] = useState<Trade[]>([]);
+  // null until the server has answered, so offline starts never convert half-known data.
+  const [legacyHoldings, setLegacyHoldings] = useState<LegacyHolding[] | null>(null);
+  const migratedRef = useRef(false);
   const [loadedParts, setLoadedParts] = useState<Set<string>>(new Set());
   const [pendingParts, setPendingParts] = useState<Set<string>>(new Set());
   const [denied, setDenied] = useState(false);
@@ -129,6 +133,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setLoadedParts(new Set());
     setDenied(false);
     ensuredRef.current = false;
+    migratedRef.current = false;
+    setLegacyHoldings(null);
     serverSeen.current = { settings: false, periods: false };
     const markLoaded = (k: string) => setLoadedParts((s) => (s.has(k) ? s : new Set(s).add(k)));
     const markPending = (k: string, v: boolean) =>
@@ -179,21 +185,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setWishlist(snap.docs.map((d) => ({ ...(d.data() as Omit<WishItem, "id">), id: d.id })).sort((a, b) => a.order - b.order));
         markLoaded("wishlist");
       }, onErr),
-      onSnapshot(col("holdings"), opts, (snap) => {
-        markPending("holdings", snap.metadata.hasPendingWrites);
-        setHoldings(snap.docs.map((d) => ({ ...(d.data() as Omit<Holding, "id">), id: d.id })));
-        markLoaded("holdings");
+      onSnapshot(col("trades"), opts, (snap) => {
+        markPending("trades", snap.metadata.hasPendingWrites);
+        setTrades(snap.docs.map((d) => ({ ...(d.data() as Omit<Trade, "id">), id: d.id })));
+        markLoaded("trades");
       }, onErr),
-      onSnapshot(col("portfolioHistory"), opts, (snap) => {
-        markPending("portfolioHistory", snap.metadata.hasPendingWrites);
-        setPortfolioHistory(snap.docs.map((d) => ({ ...(d.data() as Omit<PortfolioSnapshot, "id">), id: d.id })).sort((a, b) => a.id.localeCompare(b.id)));
-        markLoaded("portfolioHistory");
+      // First portfolio version stored one line per stock. Read only to convert.
+      onSnapshot(col("holdings"), (snap) => {
+        if (!snap.metadata.fromCache) setLegacyHoldings(snap.docs.map((d) => ({ ...(d.data() as Omit<LegacyHolding, "id">), id: d.id })));
       }, onErr)
     ];
     return () => unsubs.forEach((u) => u());
   }, [uid, base, col, fire]);
 
-  const loaded = loadedParts.size >= 7;
+  const loaded = loadedParts.size >= 6;
 
   // Roll periods forward: once server data is known, save a budget for every
   // period from the last saved one through the current period, each copied
@@ -217,6 +222,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     fire(batch.commit());
   }, [loaded, uid, periods, settings, base, fire]);
+
+  // Convert first-version holdings into buy trades, and drop the old daily
+  // snapshots, which the chart now rebuilds from trades and past prices.
+  useEffect(() => {
+    if (!db || !uid || !loaded || !legacyHoldings || migratedRef.current) return;
+    migratedRef.current = true;
+    const batch = writeBatch(db);
+    let n = 0;
+    for (const t of tradesFromLegacy(legacyHoldings, (ms) => toISODate(ms ? new Date(ms) : new Date()))) {
+      batch.set(base("trades", t.id), stripId(t));
+      batch.delete(base("holdings", t.id));
+      n++;
+    }
+    getDocs(col("portfolioHistory"))
+      .then((snap) => {
+        snap.forEach((d) => { batch.delete(d.ref); n++; });
+        if (n) fire(batch.commit());
+      })
+      .catch(() => { if (n) fire(batch.commit()); });
+  }, [loaded, uid, legacyHoldings, base, col, fire]);
 
   const newId = useCallback(() => (db && uid ? doc(col("transactions")).id : Math.random().toString(36).slice(2)), [uid, col]);
 
@@ -279,12 +304,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [base, fire]
   );
 
-  const saveHolding = useCallback(
-    (h: Holding) => fire(setDoc(base("holdings", h.id), stripId({ ...h, createdAt: h.createdAt ?? Date.now() }))),
+  const saveTrade = useCallback(
+    (t: Trade) => fire(setDoc(base("trades", t.id), stripId({ ...t, createdAt: t.createdAt ?? Date.now() }))),
     [base, fire]
   );
-  const deleteHolding = useCallback((id: string) => fire(deleteDoc(base("holdings", id))), [base, fire]);
-  const saveSnapshot = useCallback((s: PortfolioSnapshot) => fire(setDoc(base("portfolioHistory", s.id), stripId(s))), [base, fire]);
+  const deleteTrade = useCallback((id: string) => fire(deleteDoc(base("trades", id))), [base, fire]);
 
   const exportAll = useCallback(
     (): Backup => ({
@@ -296,10 +320,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       transactions,
       wishlist,
       planning,
-      holdings,
-      portfolioHistory
+      trades
     }),
-    [settings, periods, transactions, wishlist, planning, holdings, portfolioHistory]
+    [settings, periods, transactions, wishlist, planning, trades]
   );
 
   const replaceAll = useCallback(
@@ -309,21 +332,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
       wishlist.forEach((w) => ops.push({ ref: base("wishlist", w.id) }));
       Object.keys(periods).forEach((p) => ops.push({ ref: base("periods", p) }));
       // Older backups have no portfolio data; leave the current portfolio alone then.
-      if (b.holdings) holdings.forEach((h) => ops.push({ ref: base("holdings", h.id) }));
-      if (b.portfolioHistory) portfolioHistory.forEach((s) => ops.push({ ref: base("portfolioHistory", s.id) }));
+      const restored = b.trades ?? (b.holdings ? tradesFromLegacy(b.holdings, (ms) => toISODate(ms ? new Date(ms) : new Date())) : null);
+      if (restored) trades.forEach((t) => ops.push({ ref: base("trades", t.id) }));
       ops.push({ ref: base("meta", "settings"), data: { ...defaultSettings(), ...b.settings } });
       ops.push({ ref: base("meta", "planning"), data: b.planning ?? defaultPlanning() });
       b.periods.forEach((p) => ops.push({ ref: base("periods", p.id), data: { lineItems: p.lineItems } }));
       b.transactions.forEach((t) => ops.push({ ref: base("transactions", t.id), data: stripId(t) }));
       b.wishlist.forEach((w) => ops.push({ ref: base("wishlist", w.id), data: stripId(w) }));
-      b.holdings?.forEach((h) => ops.push({ ref: base("holdings", h.id), data: stripId(h) }));
-      b.portfolioHistory?.forEach((s) => ops.push({ ref: base("portfolioHistory", s.id), data: stripId(s) }));
+      restored?.forEach((t) => ops.push({ ref: base("trades", t.id), data: stripId(t) }));
       // Deletes first, then sets, so a restored doc with the same id survives.
       const deletes = ops.filter((o) => !o.data);
       const sets = ops.filter((o) => o.data);
       await chunkedWrite([...deletes, ...sets]);
     },
-    [transactions, wishlist, periods, holdings, portfolioHistory, base, chunkedWrite]
+    [transactions, wishlist, periods, trades, base, chunkedWrite]
   );
 
   const value: DataContextValue = {
@@ -336,8 +358,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     transactions,
     wishlist,
     planning,
-    holdings,
-    portfolioHistory,
+    trades,
     pending: pendingParts.size > 0,
     online,
     newId,
@@ -350,9 +371,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     saveWish,
     deleteWish,
     savePlanning,
-    saveHolding,
-    deleteHolding,
-    saveSnapshot,
+    saveTrade,
+    deleteTrade,
     exportAll,
     replaceAll
   };

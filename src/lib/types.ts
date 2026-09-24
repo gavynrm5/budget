@@ -33,8 +33,8 @@ export interface Settings {
   wishlistRooms: string[];
   /** First period shown in overviews, "YYYY-MM". */
   startPeriod: string;
-  /** Free Finnhub API key for stock quotes. Empty until the user adds one. */
-  finnhubKey: string;
+  /** Free Twelve Data API key for stock prices. Empty until the user adds one. */
+  twelveDataKey: string;
 }
 
 /** One budget line inside a period. Category can differ from the sub's default. */
@@ -89,19 +89,26 @@ export interface Planning {
   lines: PlanLine[];
 }
 
-/** One stock or ETF position: total shares and the average price paid per share. */
-export interface Holding {
+export type TradeType = "buy" | "sell";
+
+/** One buy or sell of a stock or ETF, as shown in the brokerage's history. */
+export interface Trade {
   id: string;
   symbol: string; // uppercase ticker, e.g. "VOO"
+  type: TradeType;
+  date: string; // YYYY-MM-DD
   shares: number;
-  avgCost: number;
+  price: number; // per share
   notes: string;
   createdAt?: number;
 }
 
-/** Portfolio totals for one day. The doc id is the local date "YYYY-MM-DD". */
-export interface PortfolioSnapshot {
+/** First portfolio version: one line per stock. Only read to convert into trades. */
+export interface LegacyHolding {
   id: string;
-  value: number;
-  cost: number;
+  symbol: string;
+  shares: number;
+  avgCost: number;
+  notes: string;
+  createdAt?: number;
 }
