@@ -4,6 +4,7 @@ import {
   CalendarRange,
   CloudOff,
   House,
+  LineChart,
   ListChecks,
   MoreHorizontal,
   NotebookPen,
@@ -24,6 +25,7 @@ const NAV = [
   { to: "/budget", label: "Period Budget", short: "Budget", icon: ListChecks },
   { to: "/annual", label: "Annual Overview", short: "Year", icon: CalendarRange },
   { to: "/wishlist", label: "Wishlist", short: "Wishlist", icon: Sofa },
+  { to: "/portfolio", label: "Portfolio", short: "Portfolio", icon: LineChart },
   { to: "/planning", label: "Planning", short: "Planning", icon: NotebookPen },
   { to: "/settings", label: "Settings", short: "Settings", icon: SettingsIcon }
 ];

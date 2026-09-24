@@ -54,7 +54,8 @@ export function defaultSettings(): Settings {
     wishlistSaved: 600.0,
     wishlistCategories: ["Furniture", "Decor", "Lighting", "Other"],
     wishlistRooms: ["Living Room", "Bathroom"],
-    startPeriod: "2026-03"
+    startPeriod: "2026-03",
+    finnhubKey: ""
   };
 }
 

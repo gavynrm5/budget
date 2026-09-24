@@ -14,7 +14,7 @@ import { auth, db } from "../lib/firebase";
 import { defaultPlanning, defaultSettings } from "../lib/defaults";
 import { periodsBetween, resolveBudget } from "../lib/calc";
 import { currentPeriodId } from "../lib/periods";
-import type { LineItem, PeriodBudget, Planning, Settings, SubCategory, Transaction, WishItem } from "../lib/types";
+import type { Holding, LineItem, PeriodBudget, Planning, PortfolioSnapshot, Settings, SubCategory, Transaction, WishItem } from "../lib/types";
 import { useUI } from "./ui";
 
 export interface Backup {
@@ -26,6 +26,9 @@ export interface Backup {
   transactions: Transaction[];
   wishlist: WishItem[];
   planning: Planning;
+  // Added with the portfolio page; missing in older backups.
+  holdings?: Holding[];
+  portfolioHistory?: PortfolioSnapshot[];
 }
 
 interface DataContextValue {
@@ -38,6 +41,8 @@ interface DataContextValue {
   transactions: Transaction[];
   wishlist: WishItem[];
   planning: Planning;
+  holdings: Holding[];
+  portfolioHistory: PortfolioSnapshot[];
   pending: boolean;
   online: boolean;
   newId: () => string;
@@ -50,6 +55,9 @@ interface DataContextValue {
   saveWish: (w: WishItem) => void;
   deleteWish: (id: string) => void;
   savePlanning: (p: Planning) => void;
+  saveHolding: (h: Holding) => void;
+  deleteHolding: (id: string) => void;
+  saveSnapshot: (s: PortfolioSnapshot) => void;
   exportAll: () => Backup;
   replaceAll: (b: Backup) => Promise<void>;
 }
@@ -71,6 +79,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [wishlist, setWishlist] = useState<WishItem[]>([]);
   const [planning, setPlanning] = useState<Planning>(defaultPlanning);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [portfolioHistory, setPortfolioHistory] = useState<PortfolioSnapshot[]>([]);
   const [loadedParts, setLoadedParts] = useState<Set<string>>(new Set());
   const [pendingParts, setPendingParts] = useState<Set<string>>(new Set());
   const [denied, setDenied] = useState(false);
@@ -168,12 +178,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
         markPending("wishlist", snap.metadata.hasPendingWrites);
         setWishlist(snap.docs.map((d) => ({ ...(d.data() as Omit<WishItem, "id">), id: d.id })).sort((a, b) => a.order - b.order));
         markLoaded("wishlist");
+      }, onErr),
+      onSnapshot(col("holdings"), opts, (snap) => {
+        markPending("holdings", snap.metadata.hasPendingWrites);
+        setHoldings(snap.docs.map((d) => ({ ...(d.data() as Omit<Holding, "id">), id: d.id })));
+        markLoaded("holdings");
+      }, onErr),
+      onSnapshot(col("portfolioHistory"), opts, (snap) => {
+        markPending("portfolioHistory", snap.metadata.hasPendingWrites);
+        setPortfolioHistory(snap.docs.map((d) => ({ ...(d.data() as Omit<PortfolioSnapshot, "id">), id: d.id })).sort((a, b) => a.id.localeCompare(b.id)));
+        markLoaded("portfolioHistory");
       }, onErr)
     ];
     return () => unsubs.forEach((u) => u());
   }, [uid, base, col, fire]);
 
-  const loaded = loadedParts.size >= 5;
+  const loaded = loadedParts.size >= 7;
 
   // Roll periods forward: once server data is known, save a budget for every
   // period from the last saved one through the current period, each copied
@@ -259,6 +279,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [base, fire]
   );
 
+  const saveHolding = useCallback(
+    (h: Holding) => fire(setDoc(base("holdings", h.id), stripId({ ...h, createdAt: h.createdAt ?? Date.now() }))),
+    [base, fire]
+  );
+  const deleteHolding = useCallback((id: string) => fire(deleteDoc(base("holdings", id))), [base, fire]);
+  const saveSnapshot = useCallback((s: PortfolioSnapshot) => fire(setDoc(base("portfolioHistory", s.id), stripId(s))), [base, fire]);
+
   const exportAll = useCallback(
     (): Backup => ({
       app: "pay-period-budget",
@@ -268,9 +295,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       periods: Object.values(periods),
       transactions,
       wishlist,
-      planning
+      planning,
+      holdings,
+      portfolioHistory
     }),
-    [settings, periods, transactions, wishlist, planning]
+    [settings, periods, transactions, wishlist, planning, holdings, portfolioHistory]
   );
 
   const replaceAll = useCallback(
@@ -279,17 +308,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
       transactions.forEach((t) => ops.push({ ref: base("transactions", t.id) }));
       wishlist.forEach((w) => ops.push({ ref: base("wishlist", w.id) }));
       Object.keys(periods).forEach((p) => ops.push({ ref: base("periods", p) }));
+      // Older backups have no portfolio data; leave the current portfolio alone then.
+      if (b.holdings) holdings.forEach((h) => ops.push({ ref: base("holdings", h.id) }));
+      if (b.portfolioHistory) portfolioHistory.forEach((s) => ops.push({ ref: base("portfolioHistory", s.id) }));
       ops.push({ ref: base("meta", "settings"), data: { ...defaultSettings(), ...b.settings } });
       ops.push({ ref: base("meta", "planning"), data: b.planning ?? defaultPlanning() });
       b.periods.forEach((p) => ops.push({ ref: base("periods", p.id), data: { lineItems: p.lineItems } }));
       b.transactions.forEach((t) => ops.push({ ref: base("transactions", t.id), data: stripId(t) }));
       b.wishlist.forEach((w) => ops.push({ ref: base("wishlist", w.id), data: stripId(w) }));
+      b.holdings?.forEach((h) => ops.push({ ref: base("holdings", h.id), data: stripId(h) }));
+      b.portfolioHistory?.forEach((s) => ops.push({ ref: base("portfolioHistory", s.id), data: stripId(s) }));
       // Deletes first, then sets, so a restored doc with the same id survives.
       const deletes = ops.filter((o) => !o.data);
       const sets = ops.filter((o) => o.data);
       await chunkedWrite([...deletes, ...sets]);
     },
-    [transactions, wishlist, periods, base, chunkedWrite]
+    [transactions, wishlist, periods, holdings, portfolioHistory, base, chunkedWrite]
   );
 
   const value: DataContextValue = {
@@ -302,6 +336,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     transactions,
     wishlist,
     planning,
+    holdings,
+    portfolioHistory,
     pending: pendingParts.size > 0,
     online,
     newId,
@@ -314,6 +350,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
     saveWish,
     deleteWish,
     savePlanning,
+    saveHolding,
+    deleteHolding,
+    saveSnapshot,
     exportAll,
     replaceAll
   };
