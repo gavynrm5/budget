@@ -1,4 +1,4 @@
-import type { Category, LineItem, Planning, Settings, SubCategory } from "./types";
+import type { Account, Category, LineItem, Planning, Settings, SubCategory } from "./types";
 
 const DEFAULT_SUBS: Record<Category, [string, string][]> = {
   Essentials: [
@@ -43,7 +43,7 @@ export function defaultSettings(): Settings {
     takeHomeIncome: 5482.0,
     takeHomeNote: "Net pay every 15th",
     otherIncome: 0,
-    targets: { Essentials: 40, Wants: 30, Savings: 20 },
+    targets: { Essentials: 50, Wants: 30, Savings: 20 },
     fixedExpenses: [
       { id: "fx-rent", name: "Rent / Mortgage", amount: 1813.98 },
       { id: "fx-car", name: "Car Payment", amount: 500.0 },
@@ -55,8 +55,24 @@ export function defaultSettings(): Settings {
     wishlistCategories: ["Furniture", "Decor", "Lighting", "Other"],
     wishlistRooms: ["Living Room", "Bathroom"],
     startPeriod: "2026-03",
-    twelveDataKey: ""
+    twelveDataKey: "",
+    accounts: defaultAccounts()
   };
+}
+
+/** The starting accounts. Fixed ids so they are the same on every device before first save. */
+export function defaultAccounts(): Account[] {
+  const a = (id: string, name: string, kind: Account["kind"], order: number): Account => ({
+    id, name, kind, order, archived: false, balance: 0, balanceSetAt: 0, creditLimit: null, dueDay: null
+  });
+  return [
+    a("acct-local-checking", "Local", "checking", 0),
+    a("acct-national-checking", "National", "checking", 1),
+    a("acct-savings", "Savings", "savings", 2),
+    a("acct-local-card", "Local", "credit", 3),
+    a("acct-student-card", "Student", "credit", 4),
+    a("acct-main-card", "Main", "credit", 5)
+  ];
 }
 
 export const RECOMMENDED_RANGES: Record<Category, string> = {

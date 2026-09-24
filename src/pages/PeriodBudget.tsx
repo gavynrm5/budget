@@ -1,12 +1,15 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Info, Plus, Trash2 } from "lucide-react";
+import { Gift, Info, Pencil, Plus, Trash2 } from "lucide-react";
 import { useData } from "../store/data";
 import { useUI } from "../store/ui";
 import { computePeriod, resolveBudget, type GroupCalc, type LineCalc } from "../lib/calc";
 import { currentPeriodId, isValidPeriodId, periodName } from "../lib/periods";
 import { fmt, pct } from "../lib/money";
-import { CATEGORIES, CATEGORY_LABEL, type Category, type LineItem, type PeriodBudget as PB } from "../lib/types";
+import { CATEGORIES, CATEGORY_LABEL, type Category, type ExtraIncome, type LineItem, type PeriodBudget as PB } from "../lib/types";
+import { accountLabel } from "../lib/accounts";
+import { formatDate, periodRange, todayISO } from "../lib/periods";
+import { AllocateSheet, ExtraIncomeSheet } from "../components/ExtraIncomeSheets";
 import { PeriodSwitcher } from "../components/PeriodSwitcher";
 import { TransactionList } from "../components/TransactionList";
 import { MoneyInput } from "../components/MoneyInput";
@@ -21,6 +24,7 @@ export default function PeriodBudget() {
   const { deleteWithUndo } = useUI();
   const [drafts, setDrafts] = useState<Record<string, number>>({});
   const [adding, setAdding] = useState<Category | null>(null);
+  const [extraSheet, setExtraSheet] = useState<{ kind: "edit"; entry: ExtraIncome | null } | { kind: "allocate"; entry: ExtraIncome } | null>(null);
 
   const base = useMemo(() => resolveBudget(periodId, periods, settings), [periodId, periods, settings]);
 
@@ -28,9 +32,9 @@ export default function PeriodBudget() {
   const calc = useMemo(() => {
     const items = base.lineItems.map((li) => (li.id in drafts ? { ...li, budgeted: drafts[li.id] } : li));
     const patched: Record<string, PB> = { ...periods, [periodId]: { id: periodId, lineItems: items } };
-    const c = computePeriod(periodId, patched, transactions, settings);
+    const c = computePeriod(periodId, patched, transactions, settings, data.extraIncome);
     return { ...c, virtual: base.virtual };
-  }, [base, drafts, periods, periodId, transactions, settings]);
+  }, [base, drafts, periods, periodId, transactions, settings, data.extraIncome]);
 
   // Saved amounts. The inputs compare against these, not the live drafts, so a
   // typed change is always seen as a change and saved.
@@ -91,7 +95,7 @@ export default function PeriodBudget() {
         {targetSum !== 100 && (
           <p className="col-span-2 text-sm text-warn sm:col-span-4">
             <Info size={14} className="mr-1 inline" aria-hidden />
-            Your targets add up to {targetSum}%, not 100%. Adjust them in Settings.
+            Your saved targets are {CATEGORIES.map((c) => `${CATEGORY_LABEL[c]} ${settings.targets[c]}%`).join(" + ")} = {targetSum}%, not 100%. Adjust them in Settings.
           </p>
         )}
       </div>
@@ -102,6 +106,17 @@ export default function PeriodBudget() {
           No budget is saved for this period yet, so it shows a copy of the most recent one before it. Any edit saves it as this period's own budget.
         </p>
       )}
+
+      <ExtraIncomeCard
+        extras={calc.extras}
+        total={calc.extraIncome}
+        allocated={calc.extraAllocated}
+        unallocated={calc.extraUnallocated}
+        anyOver={CATEGORIES.some((c) => calc.groups[c].lines.some((l) => l.remaining < 0))}
+        onAdd={() => setExtraSheet({ kind: "edit", entry: null })}
+        onEdit={(x) => setExtraSheet({ kind: "edit", entry: x })}
+        onAllocate={(x) => setExtraSheet({ kind: "allocate", entry: x })}
+      />
 
       <div className="space-y-5">
         {CATEGORIES.map((c) => (
@@ -137,6 +152,17 @@ export default function PeriodBudget() {
         <h2 id="tx-h" className="mb-3 text-lg">Transactions in {periodName(periodId)}</h2>
         <TransactionList transactions={calc.transactions} periodId={periodId} />
       </section>
+
+      {extraSheet?.kind === "edit" && (
+        <ExtraIncomeSheet
+          entry={extraSheet.entry}
+          // New entries default to today when viewing the current period, else the period's first day.
+          defaultDate={(() => { const r = periodRange(periodId); const t = todayISO(); return t >= r.start && t <= r.end ? t : r.start; })()}
+          onClose={() => setExtraSheet(null)}
+          onSaved={(x) => setExtraSheet(extraSheet.entry ? null : { kind: "allocate", entry: x })}
+        />
+      )}
+      {extraSheet?.kind === "allocate" && <AllocateSheet entry={extraSheet.entry} onClose={() => setExtraSheet(null)} />}
 
       {adding && (
         <AddLineSheet
@@ -217,6 +243,7 @@ function GroupSection({
                 <th scope="row" className="td truncate pl-5 text-left font-medium" title={l.name}>{l.name}</th>
                 <td className="td py-1.5">
                   <MoneyInput value={saved.get(l.item.id) ?? l.item.budgeted} label={`${l.name} budgeted`} onLive={(v) => onLive(l.item.id, v)} onCommit={(v) => onCommit(l.item.id, v)} />
+                  {l.extra > 0 && <p className="num mt-0.5 text-right text-xs font-medium text-good">+{fmt(l.extra)} extra</p>}
                 </td>
                 <td className="td num text-right text-muted">{pct(l.targetPct)}</td>
                 <td className="td text-right"><Money value={l.spent} /></td>
@@ -270,6 +297,7 @@ function GroupSection({
               </div>
               <div className="w-[130px]">
                 <MoneyInput value={saved.get(l.item.id) ?? l.item.budgeted} label={`${l.name} budgeted`} onLive={(v) => onLive(l.item.id, v)} onCommit={(v) => onCommit(l.item.id, v)} />
+                {l.extra > 0 && <p className="num mt-0.5 text-right text-xs font-medium text-good">+{fmt(l.extra)} extra</p>}
               </div>
             </div>
             <div className="mt-2 flex items-center justify-between gap-2 text-sm">
@@ -403,5 +431,76 @@ function AddLineSheet({
         <p className="text-sm text-muted">The line starts at $0.00. Set the amount right in the budget.</p>
       </form>
     </Sheet>
+  );
+}
+
+function ExtraIncomeCard({
+  extras,
+  total,
+  allocated,
+  unallocated,
+  anyOver,
+  onAdd,
+  onEdit,
+  onAllocate
+}: {
+  extras: ExtraIncome[];
+  total: number;
+  allocated: number;
+  unallocated: number;
+  anyOver: boolean;
+  onAdd: () => void;
+  onEdit: (x: ExtraIncome) => void;
+  onAllocate: (x: ExtraIncome) => void;
+}) {
+  const { settings } = useData();
+  const acct = (id: string | null) => {
+    const a = id ? settings.accounts.find((x) => x.id === id) : undefined;
+    return a ? accountLabel(a) : "";
+  };
+  if (!extras.length)
+    return (
+      <div className="card mb-5 flex flex-wrap items-center justify-between gap-2 px-4 py-3 sm:px-5">
+        <p className="flex items-center gap-2 text-sm text-muted"><Gift size={18} aria-hidden className="text-primary" /> Got money outside your paycheck this period?</p>
+        <button className="btn-ghost text-primary" onClick={onAdd}><Plus size={17} aria-hidden /> Add extra income</button>
+      </div>
+    );
+  const sorted = [...extras].sort((a, b) => a.date.localeCompare(b.date));
+  return (
+    <section aria-labelledby="extra-h" className="card mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3 sm:px-5">
+        <h2 id="extra-h" className="flex items-center gap-2 text-lg"><Gift size={19} aria-hidden className="text-primary" /> Extra income</h2>
+        <p className="num text-sm text-muted">
+          <strong className="text-ink">{fmt(total)}</strong>, {fmt(allocated)} assigned
+          {unallocated > 0 && <>, <strong className="text-primary">{fmt(unallocated)} left</strong></>}
+        </p>
+      </div>
+      {unallocated > 0 && anyOver && (
+        <p className="border-b border-line bg-warn/10 px-4 py-2 text-sm text-warn sm:px-5">Something is over budget. Use Assign to cover it with extra income.</p>
+      )}
+      <ul className="divide-y divide-line/60">
+        {sorted.map((x) => {
+          const used = x.allocations.reduce((s2, a) => s2 + a.amount, 0);
+          const left = Math.round((x.amount - used) * 100) / 100;
+          return (
+            <li key={x.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 sm:px-5">
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">{x.source} <span className="num font-semibold">{fmt(x.amount)}</span></p>
+                <p className="truncate text-xs text-muted">
+                  {[formatDate(x.date), acct(x.accountId) && `to ${acct(x.accountId)}`, left > 0 ? `${fmt(left)} not assigned` : "All assigned"].filter(Boolean).join(" · ")}
+                </p>
+              </div>
+              <div className="flex items-center">
+                <button className={left > 0 ? "btn-primary min-h-[40px] px-3 text-sm" : "btn-outline min-h-[40px] px-3 text-sm"} onClick={() => onAllocate(x)}>Assign</button>
+                <button className="icon-btn" onClick={() => onEdit(x)} aria-label={`Edit ${x.source}`}><Pencil size={16} /></button>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+      <div className="border-t border-line px-2 py-1.5 sm:px-3">
+        <button className="btn-ghost text-primary" onClick={onAdd}><Plus size={17} aria-hidden /> Add extra income</button>
+      </div>
+    </section>
   );
 }

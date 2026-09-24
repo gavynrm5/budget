@@ -7,6 +7,7 @@ import { useData } from "../store/data";
 import { useUI } from "../store/ui";
 import { fmt, sum } from "../lib/money";
 import { EmptyState, Money } from "./ui";
+import { accountLabel, activeAccounts } from "../lib/accounts";
 
 type SortKey = "date" | "amount" | "description" | "sub";
 
@@ -15,9 +16,18 @@ export function TransactionList({ transactions, periodId }: { transactions: Tran
   const { openTxSheet, deleteWithUndo } = useUI();
   const [cat, setCat] = useState<Category | "all">("all");
   const [sub, setSub] = useState<string>("all");
+  const [acct, setAcct] = useState<string>("all");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "date", dir: -1 });
 
   const subName = (id: string) => settings.subCategories.find((s) => s.id === id)?.name ?? "Unknown";
+  const acctName = (id?: string | null) => {
+    const a = id ? settings.accounts.find((x) => x.id === id) : undefined;
+    return a ? accountLabel(a) : "";
+  };
+  const acctChoices = useMemo(
+    () => activeAccounts(settings.accounts).concat(settings.accounts.filter((a) => a.archived && transactions.some((t) => t.accountId === a.id))),
+    [settings.accounts, transactions]
+  );
 
   const subChoices = useMemo(() => {
     const ids = new Set(transactions.filter((t) => cat === "all" || t.category === cat).map((t) => t.subId));
@@ -26,12 +36,17 @@ export function TransactionList({ transactions, periodId }: { transactions: Tran
   }, [transactions, cat, settings.subCategories]);
 
   const rows = useMemo(() => {
-    const list = transactions.filter((t) => (cat === "all" || t.category === cat) && (sub === "all" || t.subId === sub));
+    const list = transactions.filter(
+      (t) =>
+        (cat === "all" || t.category === cat) &&
+        (sub === "all" || t.subId === sub) &&
+        (acct === "all" || (acct === "none" ? !t.accountId : t.accountId === acct))
+    );
     const val = (t: Transaction): string | number =>
       sort.key === "amount" ? t.amount : sort.key === "description" ? t.description.toLowerCase() : sort.key === "sub" ? subName(t.subId).toLowerCase() : t.date + String(t.createdAt ?? 0).padStart(15, "0");
     return [...list].sort((a, b) => (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0) * sort.dir);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [transactions, cat, sub, sort, settings.subCategories]);
+  }, [transactions, cat, sub, acct, sort, settings.subCategories]);
 
   const toggleSort = (key: SortKey) => setSort((s) => (s.key === key ? { key, dir: (s.dir * -1) as 1 | -1 } : { key, dir: key === "date" || key === "amount" ? -1 : 1 }));
 
@@ -78,6 +93,14 @@ export function TransactionList({ transactions, periodId }: { transactions: Tran
             {subChoices.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
+        <div className="min-w-[150px] flex-1 sm:flex-none">
+          <label htmlFor="flt-acct" className="label">Paid with</label>
+          <select id="flt-acct" className="input" value={acct} onChange={(e) => setAcct(e.target.value)}>
+            <option value="all">All accounts</option>
+            <option value="none">Not set</option>
+            {acctChoices.map((a) => <option key={a.id} value={a.id}>{accountLabel(a)}</option>)}
+          </select>
+        </div>
         <div className="md:hidden">
           <label htmlFor="flt-sort" className="label">Sort</label>
           <select
@@ -112,6 +135,7 @@ export function TransactionList({ transactions, periodId }: { transactions: Tran
                   <SortHead k="description" label="Description" />
                   <th className="th">Category</th>
                   <SortHead k="sub" label="Sub-category" />
+                  <th className="th">Paid with</th>
                   <SortHead k="amount" label="Amount" right />
                   <th className="th"><span className="sr-only">Actions</span></th>
                 </tr>
@@ -126,6 +150,7 @@ export function TransactionList({ transactions, periodId }: { transactions: Tran
                     <td className="td max-w-[260px] truncate" title={t.notes || undefined}>{t.description || <span className="text-muted">No description</span>}</td>
                     <td className="td text-sm text-muted">{CATEGORY_LABEL[t.category]}</td>
                     <td className="td text-sm">{subName(t.subId)}</td>
+                    <td className="td text-sm">{acctName(t.accountId) || <span className="text-muted">Not set</span>}</td>
                     <td className="td text-right font-medium">
                       <span className="inline-flex items-center gap-1" title={t.expression ? `Typed as ${t.expression}` : undefined}>
                         {t.expression && <Calculator size={14} className="text-muted" aria-label={`Typed as ${t.expression}`} />}
@@ -149,7 +174,7 @@ export function TransactionList({ transactions, periodId }: { transactions: Tran
                 <button className="flex min-h-[64px] min-w-0 flex-1 items-center gap-3 py-2 text-left" onClick={() => openTxSheet({ editing: t })} aria-label={`Edit ${t.description || "transaction"}, ${fmt(t.amount)}`}>
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-medium">{t.description || "No description"}</p>
-                    <p className="truncate text-sm text-muted">{subName(t.subId)}, {formatDate(t.date)}</p>
+                    <p className="truncate text-sm text-muted">{[subName(t.subId), formatDate(t.date), acctName(t.accountId)].filter(Boolean).join(", ")}</p>
                   </div>
                   <div className="text-right">
                     <Money value={t.amount} className="font-semibold" />

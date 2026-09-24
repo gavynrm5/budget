@@ -2,7 +2,7 @@ import { round2, sum } from "./money";
 import { periodOfDate, shiftPeriod } from "./periods";
 import { seedLineItems } from "./defaults";
 import { CATEGORIES } from "./types";
-import type { Category, FixedExpense, LineItem, PeriodBudget, Settings, SubCategory, Transaction } from "./types";
+import type { Category, ExtraIncome, FixedExpense, LineItem, PeriodBudget, Settings, SubCategory, Transaction } from "./types";
 
 export type Status = "over" | "near" | "ok";
 
@@ -41,6 +41,10 @@ export interface LineCalc {
   item: LineItem;
   name: string;
   targetPct: number | null;
+  /** Extra income assigned to this line this period. */
+  extra: number;
+  /** Budgeted plus extra: what can be spent. */
+  available: number;
   spent: number;
   remaining: number;
   pctUsed: number | null; // null shows "-"
@@ -53,6 +57,7 @@ export interface GroupCalc {
   /** Spending in this group on sub-categories that have no line this period. */
   unbudgeted: { subId: string; name: string; spent: number }[];
   budgeted: number;
+  extra: number;
   targetPct: number | null;
   targetAmount: number;
   spent: number;
@@ -74,7 +79,15 @@ export interface PeriodCalc {
   leftFromIncome: number;
   transactions: Transaction[];
   virtual: boolean;
+  /** Extra income dated in this period, and how much of it is assigned to lines. */
+  extras: ExtraIncome[];
+  extraIncome: number;
+  extraAllocated: number;
+  extraUnallocated: number;
 }
+
+/** Pay period of an extra income entry. */
+export const extraPeriod = (x: ExtraIncome) => periodOfDate(x.date);
 
 export function subName(subs: SubCategory[], id: string): string {
   return subs.find((s) => s.id === id)?.name ?? "Unknown";
@@ -84,44 +97,55 @@ export function computePeriod(
   periodId: string,
   periods: Record<string, PeriodBudget>,
   transactions: Transaction[],
-  settings: Settings
+  settings: Settings,
+  extraIncome: ExtraIncome[] = []
 ): PeriodCalc {
   const income = totalIncome(settings);
   const { lineItems, virtual } = resolveBudget(periodId, periods, settings);
   const txs = transactions.filter((t) => txPeriod(t) === periodId);
+  const extras = extraIncome.filter((x) => extraPeriod(x) === periodId);
+  const extraBySub = new Map<string, number>();
+  for (const x of extras) for (const a of x.allocations) extraBySub.set(a.subId, (extraBySub.get(a.subId) ?? 0) + a.amount);
+  const extraFor = (subId: string) => round2(extraBySub.get(subId) ?? 0);
 
   const groups = {} as Record<Category, GroupCalc>;
   for (const category of CATEGORIES) {
     const items = lineItems.filter((li) => li.category === category);
     const lines: LineCalc[] = items.map((item) => {
       const spent = sum(txs.filter((t) => t.subId === item.subId).map((t) => t.amount));
-      const pctUsed = item.budgeted === 0 ? null : spent / item.budgeted;
+      const extra = extraFor(item.subId);
+      const available = round2(item.budgeted + extra);
+      const pctUsed = available === 0 ? null : spent / available;
       return {
         item,
         name: subName(settings.subCategories, item.subId),
         targetPct: income === 0 ? null : item.budgeted / income,
+        extra,
+        available,
         spent,
-        remaining: round2(item.budgeted - spent),
+        remaining: round2(available - spent),
         pctUsed,
         status: statusFor(pctUsed)
       };
     });
     const groupTx = txs.filter((t) => t.category === category);
     const budgeted = sum(items.map((i) => i.budgeted));
+    const extra = sum(lines.map((l) => l.extra));
     const spent = sum(groupTx.map((t) => t.amount));
     const lineSubs = new Set(lineItems.map((li) => li.subId));
     const unbMap = new Map<string, number>();
     groupTx.filter((t) => !lineSubs.has(t.subId)).forEach((t) => unbMap.set(t.subId, (unbMap.get(t.subId) ?? 0) + t.amount));
-    const pctUsed = budgeted === 0 ? 0 : spent / budgeted;
+    const pctUsed = budgeted + extra === 0 ? 0 : spent / (budgeted + extra);
     groups[category] = {
       category,
       lines,
       unbudgeted: [...unbMap].map(([subId, v]) => ({ subId, name: subName(settings.subCategories, subId), spent: round2(v) })),
       budgeted,
+      extra,
       targetPct: income === 0 ? null : budgeted / income,
       targetAmount: round2((income * settings.targets[category]) / 100),
       spent,
-      remaining: round2(budgeted - spent),
+      remaining: round2(budgeted + extra - spent),
       pctUsed,
       status: statusFor(pctUsed)
     };
@@ -129,20 +153,28 @@ export function computePeriod(
 
   const totalBudgeted = sum(lineItems.map((li) => li.budgeted));
   const totalSpent = sum(txs.map((t) => t.amount));
-  const totalPctUsed = totalBudgeted === 0 ? 0 : totalSpent / totalBudgeted;
+  const extraTotal = sum(extras.map((x) => x.amount));
+  const extraAllocated = sum(extras.flatMap((x) => x.allocations.map((a) => a.amount)));
+  // Extra assigned to a sub with no line this period still adds to what can be spent overall.
+  const totalAvailable = round2(totalBudgeted + extraAllocated);
+  const totalPctUsed = totalAvailable === 0 ? 0 : totalSpent / totalAvailable;
   return {
     periodId,
     income,
     groups,
     totalBudgeted,
     totalSpent,
-    totalRemaining: round2(totalBudgeted - totalSpent),
+    totalRemaining: round2(totalAvailable - totalSpent),
     totalPctUsed,
     totalStatus: statusFor(totalPctUsed),
     unallocated: round2(income - totalBudgeted),
-    leftFromIncome: round2(income - totalSpent),
+    leftFromIncome: round2(income + extraTotal - totalSpent),
     transactions: txs,
-    virtual
+    virtual,
+    extras,
+    extraIncome: extraTotal,
+    extraAllocated,
+    extraUnallocated: round2(extraTotal - extraAllocated)
   };
 }
 

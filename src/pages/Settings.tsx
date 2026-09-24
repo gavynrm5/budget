@@ -79,7 +79,7 @@ export default function Settings() {
 
   // Import and export
   const exportJSON = () => download(`budget-backup-${stamp}.json`, JSON.stringify(data.exportAll(), null, 2), "application/json");
-  const exportTxCSV = () => download(`transactions-${stamp}.csv`, transactionsToCSV(data.transactions, settings.subCategories), "text/csv");
+  const exportTxCSV = () => download(`transactions-${stamp}.csv`, transactionsToCSV(data.transactions, settings.subCategories, settings.accounts), "text/csv");
   const exportWishCSV = () => download(`wishlist-${stamp}.csv`, wishlistToCSV(data.wishlist), "text/csv");
 
   const onJSON = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -181,7 +181,7 @@ export default function Settings() {
           </div>
           <p className={`mt-4 flex items-center gap-2 rounded-xl px-4 py-3 text-sm ${targetSum === 100 ? "bg-good/10 text-good" : "bg-warn/15 text-warn"}`} role="status">
             {targetSum !== 100 && <TriangleAlert size={16} aria-hidden />}
-            {targetSum === 100 ? "Targets add up to 100%." : `Targets add up to ${targetSum}%. ${100 - targetSum > 0 ? `${100 - targetSum}% of income has no target.` : `That is ${targetSum - 100}% more than your income.`}`}
+            {targetSum === 100 ? "Targets add up to 100%." : `Saved targets add up to ${targetSum}% (${CATEGORIES.map((c) => settings.targets[c]).join(" + ")}). ${100 - targetSum > 0 ? `${100 - targetSum}% of income has no target.` : `That is ${targetSum - 100}% more than your income.`}`}
           </p>
         </Section>
 
@@ -294,7 +294,7 @@ export default function Settings() {
             <input ref={csvRef} type="file" accept=".csv,text/csv" className="hidden" onChange={onCSV} />
             <input ref={jsonRef} type="file" accept=".json,application/json" className="hidden" onChange={onJSON} />
           </div>
-          <p className="mt-2 text-xs text-muted">CSV columns: Date, Amount, Category, Sub-Category, Description, Notes. Imports add to what is already here.</p>
+          <p className="mt-2 text-xs text-muted">CSV columns: Date, Amount, Category, Sub-Category, Description, Notes, and optionally Paid With (like "Main card"). Imports add to what is already here.</p>
         </Section>
 
         <Section id="s-account" title="Account">

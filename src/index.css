@@ -4,31 +4,33 @@
 
 @layer base {
   :root {
-    --bg: 243 245 248;
+    /* Light: warm white with black text and burnt orange accents. */
+    --bg: 247 246 244;
     --surface: 255 255 255;
-    --surface-2: 234 238 243;
-    --ink: 15 23 42;
-    --muted: 71 85 105;
-    --line: 218 225 234;
-    --primary: 30 64 175;
+    --surface-2: 240 238 235;
+    --ink: 23 23 23;
+    --muted: 87 83 78;
+    --line: 226 223 219;
+    --primary: 194 65 12;
     --on-primary: 255 255 255;
-    --good: 4 120 87;
-    --warn: 180 83 9;
+    --good: 21 128 61;
+    --warn: 161 98 7;
     --bad: 185 28 28;
     color-scheme: light;
   }
   .dark {
-    --bg: 15 23 42;
-    --surface: 24 34 54;
-    --surface-2: 33 45 70;
-    --ink: 241 245 249;
-    --muted: 160 174 195;
-    --line: 51 65 90;
-    --primary: 125 170 255;
-    --on-primary: 15 23 42;
-    --good: 52 211 153;
-    --warn: 251 191 36;
-    --bad: 252 129 129;
+    /* Dark: near-black with bright orange accents. */
+    --bg: 10 10 10;
+    --surface: 23 23 23;
+    --surface-2: 38 38 38;
+    --ink: 245 245 244;
+    --muted: 168 162 158;
+    --line: 48 48 48;
+    --primary: 249 115 22;
+    --on-primary: 10 10 10;
+    --good: 74 222 128;
+    --warn: 250 204 21;
+    --bad: 248 113 113;
     color-scheme: dark;
   }
   html {
