@@ -40,18 +40,18 @@ export function defaultSubCategories(): SubCategory[] {
 
 export function defaultSettings(): Settings {
   return {
-    takeHomeIncome: 5482.0,
-    takeHomeNote: "Net pay every 15th",
+    takeHomeIncome: 4000.0,
+    takeHomeNote: "Net pay",
     otherIncome: 0,
     targets: { Essentials: 50, Wants: 30, Savings: 20 },
     fixedExpenses: [
-      { id: "fx-rent", name: "Rent / Mortgage", amount: 1813.98 },
-      { id: "fx-car", name: "Car Payment", amount: 500.0 },
-      { id: "fx-ins", name: "Insurance", amount: 227.0 },
-      { id: "fx-util", name: "Utilities", amount: 150.0 }
+      { id: "fx-rent", name: "Rent / Mortgage", amount: 1500.0 },
+      { id: "fx-car", name: "Car Payment", amount: 350.0 },
+      { id: "fx-ins", name: "Insurance", amount: 150.0 },
+      { id: "fx-util", name: "Utilities", amount: 120.0 }
     ],
     subCategories: defaultSubCategories(),
-    wishlistSaved: 600.0,
+    wishlistSaved: 0,
     wishlistCategories: ["Furniture", "Decor", "Lighting", "Other"],
     wishlistRooms: ["Living Room", "Bathroom"],
     startPeriod: "2026-03",
