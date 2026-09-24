@@ -32,7 +32,19 @@ export default function PeriodBudget() {
     return { ...c, virtual: base.virtual };
   }, [base, drafts, periods, periodId, transactions, settings]);
 
+  // Saved amounts. The inputs compare against these, not the live drafts, so a
+  // typed change is always seen as a change and saved.
+  const saved = useMemo(() => new Map(base.lineItems.map((li) => [li.id, li.budgeted])), [base]);
+
   const save = (items: LineItem[]) => data.savePeriod(periodId, items);
+
+  const setDraft = (id: string, v: number) =>
+    setDrafts((d) => {
+      const n = { ...d };
+      if (v === saved.get(id)) delete n[id];
+      else n[id] = v;
+      return n;
+    });
 
   const setBudget = (id: string, v: number) => {
     save(base.lineItems.map((li) => (li.id === id ? { ...li, budgeted: v } : li)));
@@ -96,7 +108,8 @@ export default function PeriodBudget() {
           <GroupSection
             key={c}
             group={calc.groups[c]}
-            onLive={(id, v) => setDrafts((d) => ({ ...d, [id]: v }))}
+            saved={saved}
+            onLive={setDraft}
             onCommit={setBudget}
             onMove={moveLine}
             onRemove={removeLine}
@@ -152,6 +165,7 @@ function Stat({ label, value, extra }: { label: string; value: ReactNode; extra?
 
 function GroupSection({
   group,
+  saved,
   onLive,
   onCommit,
   onMove,
@@ -159,6 +173,7 @@ function GroupSection({
   onAdd
 }: {
   group: GroupCalc;
+  saved: Map<string, number>;
   onLive: (id: string, v: number) => void;
   onCommit: (id: string, v: number) => void;
   onMove: (id: string, c: Category) => void;
@@ -201,7 +216,7 @@ function GroupSection({
               <tr key={l.item.id} className="border-b border-line/60">
                 <th scope="row" className="td truncate pl-5 text-left font-medium" title={l.name}>{l.name}</th>
                 <td className="td py-1.5">
-                  <MoneyInput value={l.item.budgeted} label={`${l.name} budgeted`} onLive={(v) => onLive(l.item.id, v)} onCommit={(v) => onCommit(l.item.id, v)} />
+                  <MoneyInput value={saved.get(l.item.id) ?? l.item.budgeted} label={`${l.name} budgeted`} onLive={(v) => onLive(l.item.id, v)} onCommit={(v) => onCommit(l.item.id, v)} />
                 </td>
                 <td className="td num text-right text-muted">{pct(l.targetPct)}</td>
                 <td className="td text-right"><Money value={l.spent} /></td>
@@ -254,7 +269,7 @@ function GroupSection({
                 <p className="num text-xs text-muted">{pct(l.targetPct)} of income</p>
               </div>
               <div className="w-[130px]">
-                <MoneyInput value={l.item.budgeted} label={`${l.name} budgeted`} onLive={(v) => onLive(l.item.id, v)} onCommit={(v) => onCommit(l.item.id, v)} />
+                <MoneyInput value={saved.get(l.item.id) ?? l.item.budgeted} label={`${l.name} budgeted`} onLive={(v) => onLive(l.item.id, v)} onCommit={(v) => onCommit(l.item.id, v)} />
               </div>
             </div>
             <div className="mt-2 flex items-center justify-between gap-2 text-sm">

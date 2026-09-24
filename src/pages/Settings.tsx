@@ -7,7 +7,7 @@ import { fmt, round2, sum } from "../lib/money";
 import { RECOMMENDED_RANGES } from "../lib/defaults";
 import { download } from "../lib/csv";
 import { parseTransactionsCSV, SAMPLE_CSV, transactionsToCSV, wishlistToCSV, type CsvImportResult } from "../lib/importExport";
-import { resolveBudget } from "../lib/calc";
+import { applyFixedExpenses, resolveBudget } from "../lib/calc";
 import { currentPeriodId, isValidPeriodId, periodName } from "../lib/periods";
 import { getTheme, setTheme, type ThemePref } from "../lib/theme";
 import { CATEGORIES, CATEGORY_LABEL, type Category, type SubCategory } from "../lib/types";
@@ -60,13 +60,21 @@ export default function Settings() {
 
   const applyFixedToCurrent = async () => {
     const pid = currentPeriodId();
-    const ok = await confirm(`Update ${periodName(pid)}?`, "Lines in the current period whose names match a fixed expense will be set to these amounts.", "Update");
+    const ok = await confirm(
+      `Update ${periodName(pid)}?`,
+      "Each fixed expense sets the budget line with the same name in the current period. A line that isn't there yet is added, and a new sub-category is created under Essentials if needed.",
+      "Update"
+    );
     if (!ok) return;
-    const byName = new Map(fixed.map((f) => [f.name.trim().toLowerCase(), f.amount]));
-    const nameOf = (id: string) => settings.subCategories.find((s) => s.id === id)?.name.trim().toLowerCase() ?? "";
-    const items = resolveBudget(pid, data.periods, settings).lineItems.map((li) => (byName.has(nameOf(li.subId)) ? { ...li, budgeted: byName.get(nameOf(li.subId))! } : li));
-    data.savePeriod(pid, items);
-    toast({ message: `${periodName(pid)} updated`, tone: "good" });
+    const r = applyFixedExpenses(resolveBudget(pid, data.periods, settings).lineItems, fixed, settings.subCategories, data.newId);
+    if (r.subCategories) data.saveSubCategories(r.subCategories);
+    if (r.updated.length || r.added.length) data.savePeriod(pid, r.lineItems);
+    const detail = [
+      r.updated.length && `Updated ${r.updated.join(", ")}.`,
+      r.added.length && `Added ${r.added.join(", ")}.`,
+      r.unchanged.length && `Already set: ${r.unchanged.join(", ")}.`
+    ].filter(Boolean).join(" ");
+    toast({ message: r.updated.length || r.added.length ? `${periodName(pid)} updated` : `${periodName(pid)} already matches`, detail, tone: "good" }, 6000);
   };
 
   // Import and export
@@ -177,7 +185,7 @@ export default function Settings() {
           </p>
         </Section>
 
-        <Section id="s-fixed" title="Fixed monthly expenses" desc="Prefilled into matching lines when a brand new budget is seeded.">
+        <Section id="s-fixed" title="Fixed monthly expenses" desc="Prefilled into new budgets. Use Apply to put today's amounts into the current period's budget.">
           <ul className="grid gap-2">
             {fixed.map((f) => (
               <li key={f.id} className="flex items-center gap-2">

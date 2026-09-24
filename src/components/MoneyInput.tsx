@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { evaluate } from "../lib/expr";
 import { round2 } from "../lib/money";
 
@@ -30,6 +30,21 @@ export function MoneyInput({
   useEffect(() => {
     if (!focused) setText(value.toFixed(2));
   }, [value, focused]);
+
+  // If the field goes away mid-edit (a page change, a swipe back), save what
+  // was typed instead of dropping it.
+  const latest = useRef({ text, focused, value, onCommit });
+  latest.current = { text, focused, value, onCommit };
+  useEffect(
+    () => () => {
+      const l = latest.current;
+      if (!l.focused) return;
+      const v = parse(l.text);
+      if (v !== null && v !== l.value) l.onCommit(v);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
 
   const parse = (t: string): number | null => {
     if (!t.trim()) return 0;
