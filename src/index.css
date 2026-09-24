@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg: 243 245 248;
+    --surface: 255 255 255;
+    --surface-2: 234 238 243;
+    --ink: 15 23 42;
+    --muted: 71 85 105;
+    --line: 218 225 234;
+    --primary: 30 64 175;
+    --on-primary: 255 255 255;
+    --good: 4 120 87;
+    --warn: 180 83 9;
+    --bad: 185 28 28;
+    color-scheme: light;
+  }
+  .dark {
+    --bg: 15 23 42;
+    --surface: 24 34 54;
+    --surface-2: 33 45 70;
+    --ink: 241 245 249;
+    --muted: 160 174 195;
+    --line: 51 65 90;
+    --primary: 125 170 255;
+    --on-primary: 15 23 42;
+    --good: 52 211 153;
+    --warn: 251 191 36;
+    --bad: 252 129 129;
+    color-scheme: dark;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-bg text-ink font-sans antialiased;
+    font-size: 16px;
+    line-height: 1.5;
+    min-height: 100dvh;
+  }
+  button, a, [role="button"], summary, select, label[for] {
+    touch-action: manipulation;
+  }
+  button:not(:disabled), a, summary, select { cursor: pointer; }
+  :focus-visible {
+    outline: 3px solid rgb(var(--primary));
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  h1, h2, h3 { font-weight: 600; letter-spacing: -0.01em; }
+  input, select, textarea { font-size: 16px; }
+}
+
+@layer components {
+  .num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+  .card { @apply bg-surface border border-line rounded-2xl; }
+  .input {
+    @apply w-full min-h-[44px] rounded-xl border border-line bg-surface px-3 py-2 text-ink
+      placeholder:text-muted/70 transition-colors duration-150 focus:border-primary focus:outline-none
+      focus:ring-2 focus:ring-primary/30;
+  }
+  .btn {
+    @apply inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 font-medium
+      transition-[background-color,transform,opacity] duration-150 active:scale-[0.98]
+      disabled:opacity-45 disabled:cursor-not-allowed;
+  }
+  .btn-primary { @apply btn bg-primary text-on-primary hover:bg-primary/90; }
+  .btn-ghost { @apply btn text-ink hover:bg-surface-2; }
+  .btn-outline { @apply btn border border-line bg-surface text-ink hover:bg-surface-2; }
+  .btn-danger { @apply btn bg-bad text-white hover:bg-bad/90 dark:text-bg; }
+  .icon-btn {
+    @apply inline-flex h-11 w-11 items-center justify-center rounded-xl text-muted
+      transition-colors duration-150 hover:bg-surface-2 hover:text-ink;
+  }
+  .label { @apply mb-1 block text-sm font-medium text-muted; }
+  .th { @apply px-3 py-2 text-left text-sm font-medium text-muted whitespace-nowrap; }
+  .td { @apply px-3 py-2.5 whitespace-nowrap; }
+  .annual .td, .annual .th { @apply px-2; }
+  .annual .td:first-child, .annual .th:first-child { @apply pl-4; }
+  .annual .td:last-child, .annual .th:last-child { @apply pr-4; }
+}
+
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+
+@keyframes sheet-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes pop-in { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+@layer utilities {
+  .anim-sheet { animation: sheet-up 260ms cubic-bezier(0.2, 0.9, 0.3, 1); }
+  .anim-pop { animation: pop-in 200ms ease-out; }
+  .anim-fade { animation: fade-in 180ms ease-out; }
+  .anim-toast { animation: toast-in 200ms ease-out; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 1ms !important;
+    transition-duration: 1ms !important;
+  }
+}

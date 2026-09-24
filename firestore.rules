@@ -1,0 +1,32 @@
+rules_version = '2';
+
+// Only ONE person may read or write anything: the owner.
+//
+// HOW TO SET IT UP
+// 1. Deploy the app and sign in once with your Google account.
+//    The app will show a screen with your user ID (a long string of letters
+//    and numbers). You can also find it in Firebase console > Authentication
+//    > Users, in the "User UID" column.
+// 2. Replace PASTE_YOUR_UID_HERE below with that ID. Keep the quotes.
+// 3. Paste this whole file into Firebase console > Firestore Database > Rules,
+//    then click Publish.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(userId) {
+      return request.auth != null
+        && request.auth.uid == userId
+        && userId == "jytsSo65ldYb3lazlNa8pwXUpJ73";
+    }
+
+    match /users/{userId}/{document=**} {
+      allow read, write: if isOwner(userId);
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
