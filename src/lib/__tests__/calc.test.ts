@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { computePeriod, statusFor, subsForCategory, txPeriod } from "../calc";
+import { applyFixedExpenses, computePeriod, statusFor, subsForCategory, txPeriod } from "../calc";
 import { defaultSettings, seedLineItems } from "../defaults";
 import { evaluate } from "../expr";
 import { daysInPeriod, periodOfDate, periodRangeLabel, shiftPeriod } from "../periods";
 import { evaluatePlan } from "../planning";
 import { normalizeDate } from "../csv";
-import type { PeriodBudget, Transaction } from "../types";
+import type { LineItem, PeriodBudget, Transaction } from "../types";
 
 const s = defaultSettings();
 const tx = (p: Partial<Transaction>): Transaction => ({
@@ -130,5 +130,50 @@ describe("planning and csv", () => {
   it("normalizes dates", () => {
     expect(normalizeDate("3/5/2026")).toBe("2026-03-05");
     expect(normalizeDate("2026-02-30")).toBeNull();
+  });
+});
+
+describe("applying fixed expenses", () => {
+  let n = 0;
+  const id = () => `new${++n}`;
+  const items = seedLineItems(s);
+  const line = (li: LineItem[], subId: string) => li.find((x) => x.subId === subId);
+
+  it("updates lines by name, ignoring case and spaces", () => {
+    const r = applyFixedExpenses(items, [{ id: "a", name: "  rent / mortgage ", amount: 1900 }], s.subCategories, id);
+    expect(line(r.lineItems, "rent")?.budgeted).toBe(1900);
+    expect(r.updated).toEqual(["Rent / Mortgage"]);
+    expect(r.subCategories).toBeNull();
+    expect(line(items, "rent")?.budgeted).toBe(1813.98); // input untouched
+  });
+
+  it("adds a line for a sub-category the period doesn't have", () => {
+    const without = items.filter((li) => li.subId !== "insurance");
+    const r = applyFixedExpenses(without, [{ id: "a", name: "Insurance", amount: 240 }], s.subCategories, id);
+    expect(line(r.lineItems, "insurance")).toMatchObject({ category: "Essentials", budgeted: 240 });
+    expect(r.added).toEqual(["Insurance"]);
+  });
+
+  it("creates a sub-category and line for a brand new expense", () => {
+    const r = applyFixedExpenses(items, [{ id: "a", name: "Phone", amount: 85 }], s.subCategories, id);
+    const sub = r.subCategories?.find((x) => x.name === "Phone");
+    expect(sub).toMatchObject({ category: "Essentials", archived: false });
+    expect(line(r.lineItems, sub!.id)?.budgeted).toBe(85);
+    expect(r.added).toEqual(["Phone"]);
+  });
+
+  it("restores an archived sub-category instead of duplicating it", () => {
+    const subs = s.subCategories.map((x) => (x.id === "utilities" ? { ...x, archived: true } : x));
+    const r = applyFixedExpenses(items.filter((li) => li.subId !== "utilities"), [{ id: "a", name: "Utilities", amount: 160 }], subs, id);
+    expect(r.subCategories?.find((x) => x.id === "utilities")?.archived).toBe(false);
+    expect(r.subCategories?.filter((x) => x.name === "Utilities")).toHaveLength(1);
+    expect(line(r.lineItems, "utilities")?.budgeted).toBe(160);
+  });
+
+  it("reports lines already at the right amount and skips blank names", () => {
+    const r = applyFixedExpenses(items, [{ id: "a", name: "Car Payment", amount: 500 }, { id: "b", name: "  ", amount: 9 }], s.subCategories, id);
+    expect(r.unchanged).toEqual(["Car Payment"]);
+    expect(r.updated).toEqual([]);
+    expect(r.added).toEqual([]);
   });
 });

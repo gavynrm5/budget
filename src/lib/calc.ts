@@ -2,7 +2,7 @@ import { round2, sum } from "./money";
 import { periodOfDate, shiftPeriod } from "./periods";
 import { seedLineItems } from "./defaults";
 import { CATEGORIES } from "./types";
-import type { Category, LineItem, PeriodBudget, Settings, SubCategory, Transaction } from "./types";
+import type { Category, FixedExpense, LineItem, PeriodBudget, Settings, SubCategory, Transaction } from "./types";
 
 export type Status = "over" | "near" | "ok";
 
@@ -171,4 +171,61 @@ export function periodsBetween(from: string, to: string): string[] {
   let p = from;
   while (p <= to) { out.push(p); p = shiftPeriod(p, 1); }
   return out;
+}
+
+export interface FixedApplyResult {
+  lineItems: LineItem[];
+  /** The full sub-category list when it had to change (a new or restored sub), else null. */
+  subCategories: SubCategory[] | null;
+  updated: string[];
+  added: string[];
+  unchanged: string[];
+}
+
+/**
+ * Puts fixed expense amounts into a period's budget lines. Each expense is
+ * matched to a sub-category by name (ignoring case and spaces at the ends).
+ * A missing line is added, and a missing sub-category is created under
+ * Essentials (or restored if it was archived), so every expense lands.
+ */
+export function applyFixedExpenses(
+  lineItems: LineItem[],
+  fixed: FixedExpense[],
+  subs: SubCategory[],
+  newId: () => string
+): FixedApplyResult {
+  const norm = (s: string) => s.trim().toLowerCase();
+  let list = [...subs];
+  let subsChanged = false;
+  const items = lineItems.map((li) => ({ ...li }));
+  const res = { updated: [] as string[], added: [] as string[], unchanged: [] as string[] };
+
+  for (const f of fixed) {
+    const name = f.name.trim();
+    if (!name) continue;
+    const matches = list.filter((s) => norm(s.name) === norm(name));
+    let sub = matches.find((s) => !s.archived) ?? matches[0];
+    if (!sub) {
+      sub = { id: newId(), name, category: "Essentials", order: Math.max(-1, ...list.map((s) => s.order)) + 1, archived: false };
+      list = [...list, sub];
+      subsChanged = true;
+    } else if (sub.archived) {
+      const restored: SubCategory = { ...sub, archived: false };
+      list = list.map((s) => (s.id === restored.id ? restored : s));
+      sub = restored;
+      subsChanged = true;
+    }
+    const amount = round2(f.amount);
+    const line = items.find((li) => li.subId === sub!.id);
+    if (!line) {
+      items.push({ id: newId(), subId: sub.id, category: sub.category, budgeted: amount });
+      res.added.push(sub.name);
+    } else if (line.budgeted !== amount) {
+      line.budgeted = amount;
+      res.updated.push(sub.name);
+    } else {
+      res.unchanged.push(sub.name);
+    }
+  }
+  return { lineItems: items, subCategories: subsChanged ? list : null, ...res };
 }

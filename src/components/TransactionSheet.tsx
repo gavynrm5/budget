@@ -293,7 +293,7 @@ export function TransactionSheet() {
             aria-controls="tx-suggest"
           />
           {showSuggest && suggestions.length > 0 && (
-            <ul id="tx-suggest" role="listbox" className="absolute inset-x-0 top-full z-10 mt-1 overflow-hidden rounded-xl border border-line bg-surface shadow-lg">
+            <ul id="tx-suggest" role="listbox" data-keep-focus className="absolute inset-x-0 top-full z-10 mt-1 overflow-hidden rounded-xl border border-line bg-surface shadow-lg">
               {suggestions.map((h) => (
                 <li key={h.description} role="option" aria-selected={false}>
                   <button

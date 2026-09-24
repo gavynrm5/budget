@@ -67,6 +67,32 @@ export function Layout({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [openTxSheet, txSheet]);
 
+  // Many fields save when they lose focus. Safari (iPhone and Mac) keeps a text
+  // field focused when a button, link, or empty space is tapped, so the save
+  // would run late or never (for example, when a tab switches pages first).
+  // Ending the edit on any tap outside the field makes it save first, like
+  // other browsers. Also end it when the app goes to the background.
+  // Elements marked data-keep-focus (like autocomplete lists) opt out.
+  useEffect(() => {
+    const endEdit = () => {
+      const el = document.activeElement as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA")) el.blur();
+    };
+    const onDown = (e: PointerEvent) => {
+      const el = document.activeElement;
+      const target = e.target as Element;
+      if (!el || el === target || el.contains(target) || target.closest?.("[data-keep-focus]")) return;
+      endEdit();
+    };
+    const onHide = () => document.visibilityState === "hidden" && endEdit();
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, []);
+
   // Move focus to main content on route change for screen reader users.
   useEffect(() => {
     document.getElementById("main")?.focus({ preventScroll: true });
