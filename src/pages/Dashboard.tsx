@@ -1,9 +1,11 @@
 import { useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { ChevronRight } from "lucide-react";
+import { CalendarClock, ChevronRight } from "lucide-react";
+import { Link } from "react-router-dom";
 import { useData } from "../store/data";
 import { computePeriod } from "../lib/calc";
-import { currentPeriodId, isValidPeriodId, parseISO, periodName, periodRangeLabel, periodsForYear } from "../lib/periods";
+import { currentPeriodId, formatDate, isValidPeriodId, parseISO, periodName, periodRangeLabel, periodsForYear, todayISO } from "../lib/periods";
+import { accountLabel, activeAccounts, computeBalances, nextDue } from "../lib/accounts";
 import { fmt, pct } from "../lib/money";
 import { PeriodSwitcher } from "../components/PeriodSwitcher";
 import { PeriodRuler } from "../components/PeriodRuler";
@@ -11,32 +13,59 @@ import { CategoryTable } from "../components/CategoryTable";
 import { Money, PageHeader, StatusBadge, SummaryCard } from "../components/ui";
 
 export default function Dashboard() {
-  const { settings, periods, transactions } = useData();
+  const { settings, periods, transactions, extraIncome, transfers } = useData();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const raw = params.get("p");
   const periodId = raw && isValidPeriodId(raw) ? raw : currentPeriodId();
   const setPeriod = (id: string) => setParams(id === currentPeriodId() ? {} : { p: id }, { replace: true });
 
-  const calc = useMemo(() => computePeriod(periodId, periods, transactions, settings), [periodId, periods, transactions, settings]);
+  const calc = useMemo(() => computePeriod(periodId, periods, transactions, settings, extraIncome), [periodId, periods, transactions, settings, extraIncome]);
   const year = parseISO(periodId + "-01").y;
   const yearRows = useMemo(
-    () => periodsForYear(year, settings.startPeriod).map((p) => computePeriod(p, periods, transactions, settings)),
-    [year, periods, transactions, settings]
+    () => periodsForYear(year, settings.startPeriod).map((p) => computePeriod(p, periods, transactions, settings, extraIncome)),
+    [year, periods, transactions, settings, extraIncome]
   );
   const current = currentPeriodId();
+
+  // Cards with a balance due in the next week.
+  const dueSoon = useMemo(() => {
+    const bal = computeBalances(settings.accounts, transactions, transfers, extraIncome);
+    const today = todayISO();
+    return activeAccounts(settings.accounts)
+      .filter((a) => a.kind === "credit" && a.dueDay && bal[a.id] > 0)
+      .map((a) => ({ account: a, owed: bal[a.id], ...nextDue(a.dueDay!, today) }))
+      .filter((d) => d.days <= 7)
+      .sort((x, y) => x.days - y.days);
+  }, [settings.accounts, transactions, transfers, extraIncome]);
 
   return (
     <>
       <PageHeader title="Dashboard" actions={<PeriodSwitcher periodId={periodId} onChange={setPeriod} />} />
 
+      {dueSoon.length > 0 && (
+        <section aria-label="Card payments due soon" className="mb-4 rounded-2xl border border-warn/40 bg-warn/10 px-4 py-3">
+          <ul className="grid gap-1">
+            {dueSoon.map((d) => (
+              <li key={d.account.id} className="flex flex-wrap items-center gap-x-2 text-sm">
+                <CalendarClock size={16} aria-hidden className="text-warn" />
+                <strong>{accountLabel(d.account)}</strong>
+                <span>due {d.days === 0 ? "today" : d.days === 1 ? "tomorrow" : `in ${d.days} days`} ({formatDate(d.date)})</span>
+                <span className="num text-muted">· balance {fmt(d.owed)}</span>
+              </li>
+            ))}
+          </ul>
+          <Link to="/accounts" className="mt-1 inline-flex min-h-[36px] items-center text-sm font-medium text-primary hover:underline">Go to accounts</Link>
+        </section>
+      )}
+
       <PeriodRuler calc={calc} />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <SummaryCard label="Monthly Income" value={calc.income} hint={settings.takeHomeNote} />
+        <SummaryCard label="Monthly Income" value={calc.income} hint={calc.extraIncome > 0 ? `Plus ${fmt(calc.extraIncome)} extra this period` : settings.takeHomeNote} />
         <SummaryCard label="Total Budgeted" value={calc.totalBudgeted} hint={calc.unallocated < 0 ? `Over-allocated by ${fmt(-calc.unallocated)}` : `${fmt(calc.unallocated)} unallocated`} />
         <SummaryCard label="Total Spent" value={calc.totalSpent} />
-        <SummaryCard label="Left from Income" value={calc.leftFromIncome} tone={calc.leftFromIncome < 0 ? "bad" : undefined} hint="Income minus spent" />
+        <SummaryCard label="Left from Income" value={calc.leftFromIncome} tone={calc.leftFromIncome < 0 ? "bad" : undefined} hint={calc.extraIncome > 0 ? "Income and extra, minus spent" : "Income minus spent"} />
       </div>
 
       <section aria-labelledby="cat-h" className="mb-8">

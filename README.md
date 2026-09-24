@@ -161,6 +161,19 @@ It opens full screen like a native app. On iPhone, the home screen app keeps its
 
 Budget amounts per period are not part of the CSV. Set them on the **Period Budget** screen for your first period. Each new period copies the one before it.
 
+## Accounts and cards
+
+The **Accounts** page tracks your bank accounts and credit cards by nickname only (like "Local" or "Main"). Never put account or card numbers in the app.
+
+- **Set balance:** type the real balance from your bank or card app. After that, balances update on their own. Spending with **Paid with** set lowers a bank account or raises what a card owes, extra income adds to the account it went into, and transfers move money between two accounts. Entries logged later but dated before the day you set the balance are ignored, because the bank already counted them.
+- **Transfers and card payments:** use **Transfer** or **Pay card**. They change both balances and never count as spending.
+- **Cards:** add a credit limit to see how much of it you're using (under 30% is the usual goal) and a due day to get a reminder on the Dashboard the week it's due.
+- **Add account** adds a new card or bank account. An account with entries can be archived but not deleted, so its history stays.
+
+## Extra income
+
+Money outside your paycheck, like a birthday gift or gambling winnings, goes under **Extra income** on the Period Budget. After adding it, **Assign** it: lines that are over budget are listed first with a one-tap **Cover**, and any amount can go into any sub-category. Assigned money raises what's available on that line for that pay period without changing your planned budget. Anything not assigned stays in that period to assign later.
+
 ## Tracking your stocks
 
 The **Portfolio** page (under **More** on a phone) tracks stocks and ETFs with live and past prices from [Twelve Data](https://twelvedata.com)'s free plan.
@@ -184,7 +197,7 @@ The free plan allows 8 price requests a minute and 800 a day. Each stock uses ab
 
 Everything already lives in Firestore, but you can keep your own copies:
 
-- **Settings > Full backup (JSON)** saves everything: settings, every period budget, transactions, wishlist, planning lines, and your portfolio.
+- **Settings > Full backup (JSON)** saves everything: settings and accounts, every period budget, transactions, transfers, extra income, wishlist, planning lines, and your portfolio.
 - **Restore JSON backup** replaces all current data with a backup (it asks first).
 - Transactions and wishlist can also be exported as CSV to open in a spreadsheet.
 
@@ -250,11 +263,13 @@ public/icons/             <- app icons for the home screen
 
 Firestore layout, all under `users/{your uid}/`:
 
-- `meta/settings` holds income, targets, fixed expenses, sub-categories, wishlist options
+- `meta/settings` holds income, targets, fixed expenses, sub-categories, wishlist options, and accounts
 - `meta/planning` holds the planning scratchpad lines
 - `periods/{YYYY-MM}` holds that period's budget lines
 - `transactions/{id}` and `wishlist/{id}` hold one document each
 - `trades/{id}` holds one buy or sale each
+- `transfers/{id}` holds one transfer between accounts, and `extraIncome/{id}` one extra income entry with where it was assigned
+- Accounts and cards live in `meta/settings` with their nickname, last set balance, limit, and due day
 
 ## Handy commands
 

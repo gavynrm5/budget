@@ -13,6 +13,7 @@ type RowDef = { label: string; get: (c: PeriodCalc) => number; strong?: boolean;
 
 const ROWS: RowDef[] = [
   { label: "Income", get: (c) => c.income, strong: true },
+  { label: "Extra Income", get: (c) => c.extraIncome },
   { label: "Essentials Budget", get: (c) => c.groups.Essentials.budgeted, divider: true },
   { label: "Essentials Spent", get: (c) => c.groups.Essentials.spent },
   { label: "Wants Budget", get: (c) => c.groups.Wants.budgeted, divider: true },
@@ -24,14 +25,14 @@ const ROWS: RowDef[] = [
 ];
 
 export default function Annual() {
-  const { settings, periods, transactions } = useData();
+  const { settings, periods, transactions, extraIncome } = useData();
   const navigate = useNavigate();
   const [year, setYear] = useState(() => parseISO(currentPeriodId() + "-01").y);
   const firstYear = parseISO(settings.startPeriod + "-01").y;
 
   const cols = useMemo(
-    () => periodsForYear(year, settings.startPeriod).map((p) => computePeriod(p, periods, transactions, settings)),
-    [year, periods, transactions, settings]
+    () => periodsForYear(year, settings.startPeriod).map((p) => computePeriod(p, periods, transactions, settings, extraIncome)),
+    [year, periods, transactions, settings, extraIncome]
   );
   const current = currentPeriodId();
 

@@ -53,7 +53,7 @@ describe("period calculations", () => {
     const c = computePeriod("2026-03", periods, [], s);
     expect(c.income).toBe(5482);
     expect(c.groups.Essentials.budgeted).toBe(2690.98); // 1813.98 + 500 + 227 + 150
-    expect(c.groups.Essentials.targetAmount).toBe(2192.8); // 40% of 5482
+    expect(c.groups.Essentials.targetAmount).toBe(2741); // 50% of 5482
     expect(c.unallocated).toBe(2791.02);
   });
 

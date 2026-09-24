@@ -17,7 +17,7 @@ import { periodsBetween, resolveBudget } from "../lib/calc";
 import { currentPeriodId } from "../lib/periods";
 import { toISODate } from "../lib/periods";
 import { tradesFromLegacy } from "../lib/portfolio";
-import type { LegacyHolding, LineItem, PeriodBudget, Planning, Settings, SubCategory, Trade, Transaction, WishItem } from "../lib/types";
+import type { ExtraIncome, LegacyHolding, LineItem, PeriodBudget, Planning, Settings, SubCategory, Trade, Transaction, Transfer, WishItem } from "../lib/types";
 import { useUI } from "./ui";
 
 export interface Backup {
@@ -33,6 +33,8 @@ export interface Backup {
   trades?: Trade[];
   /** First portfolio version, converted to trades on restore. */
   holdings?: LegacyHolding[];
+  transfers?: Transfer[];
+  extraIncome?: ExtraIncome[];
 }
 
 interface DataContextValue {
@@ -46,6 +48,8 @@ interface DataContextValue {
   wishlist: WishItem[];
   planning: Planning;
   trades: Trade[];
+  transfers: Transfer[];
+  extraIncome: ExtraIncome[];
   pending: boolean;
   online: boolean;
   newId: () => string;
@@ -60,6 +64,10 @@ interface DataContextValue {
   savePlanning: (p: Planning) => void;
   saveTrade: (t: Trade) => void;
   deleteTrade: (id: string) => void;
+  saveTransfer: (t: Transfer) => void;
+  deleteTransfer: (id: string) => void;
+  saveExtraIncome: (x: ExtraIncome) => void;
+  deleteExtraIncome: (id: string) => void;
   exportAll: () => Backup;
   replaceAll: (b: Backup) => Promise<void>;
 }
@@ -82,6 +90,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [wishlist, setWishlist] = useState<WishItem[]>([]);
   const [planning, setPlanning] = useState<Planning>(defaultPlanning);
   const [trades, setTrades] = useState<Trade[]>([]);
+  const [transfers, setTransfers] = useState<Transfer[]>([]);
+  const [extraIncome, setExtraIncome] = useState<ExtraIncome[]>([]);
   // null until the server has answered, so offline starts never convert half-known data.
   const [legacyHoldings, setLegacyHoldings] = useState<LegacyHolding[] | null>(null);
   const migratedRef = useRef(false);
@@ -190,6 +200,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setTrades(snap.docs.map((d) => ({ ...(d.data() as Omit<Trade, "id">), id: d.id })));
         markLoaded("trades");
       }, onErr),
+      onSnapshot(col("transfers"), opts, (snap) => {
+        markPending("transfers", snap.metadata.hasPendingWrites);
+        setTransfers(snap.docs.map((d) => ({ ...(d.data() as Omit<Transfer, "id">), id: d.id })));
+        markLoaded("transfers");
+      }, onErr),
+      onSnapshot(col("extraIncome"), opts, (snap) => {
+        markPending("extraIncome", snap.metadata.hasPendingWrites);
+        setExtraIncome(snap.docs.map((d) => {
+          const x = d.data() as Omit<ExtraIncome, "id">;
+          return { ...x, allocations: x.allocations ?? [], id: d.id };
+        }));
+        markLoaded("extraIncome");
+      }, onErr),
       // First portfolio version stored one line per stock. Read only to convert.
       onSnapshot(col("holdings"), (snap) => {
         if (!snap.metadata.fromCache) setLegacyHoldings(snap.docs.map((d) => ({ ...(d.data() as Omit<LegacyHolding, "id">), id: d.id })));
@@ -198,7 +221,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return () => unsubs.forEach((u) => u());
   }, [uid, base, col, fire]);
 
-  const loaded = loadedParts.size >= 6;
+  const loaded = loadedParts.size >= 8;
 
   // Roll periods forward: once server data is known, save a budget for every
   // period from the last saved one through the current period, each copied
@@ -310,6 +333,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
   const deleteTrade = useCallback((id: string) => fire(deleteDoc(base("trades", id))), [base, fire]);
 
+  const saveTransfer = useCallback(
+    (t: Transfer) => fire(setDoc(base("transfers", t.id), stripId({ ...t, createdAt: t.createdAt ?? Date.now() }))),
+    [base, fire]
+  );
+  const deleteTransfer = useCallback((id: string) => fire(deleteDoc(base("transfers", id))), [base, fire]);
+  const saveExtraIncome = useCallback(
+    (x: ExtraIncome) => fire(setDoc(base("extraIncome", x.id), stripId({ ...x, createdAt: x.createdAt ?? Date.now() }))),
+    [base, fire]
+  );
+  const deleteExtraIncome = useCallback((id: string) => fire(deleteDoc(base("extraIncome", id))), [base, fire]);
+
   const exportAll = useCallback(
     (): Backup => ({
       app: "pay-period-budget",
@@ -320,9 +354,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       transactions,
       wishlist,
       planning,
-      trades
+      trades,
+      transfers,
+      extraIncome
     }),
-    [settings, periods, transactions, wishlist, planning, trades]
+    [settings, periods, transactions, wishlist, planning, trades, transfers, extraIncome]
   );
 
   const replaceAll = useCallback(
@@ -334,18 +370,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
       // Older backups have no portfolio data; leave the current portfolio alone then.
       const restored = b.trades ?? (b.holdings ? tradesFromLegacy(b.holdings, (ms) => toISODate(ms ? new Date(ms) : new Date())) : null);
       if (restored) trades.forEach((t) => ops.push({ ref: base("trades", t.id) }));
+      if (b.transfers) transfers.forEach((t) => ops.push({ ref: base("transfers", t.id) }));
+      if (b.extraIncome) extraIncome.forEach((x) => ops.push({ ref: base("extraIncome", x.id) }));
       ops.push({ ref: base("meta", "settings"), data: { ...defaultSettings(), ...b.settings } });
       ops.push({ ref: base("meta", "planning"), data: b.planning ?? defaultPlanning() });
       b.periods.forEach((p) => ops.push({ ref: base("periods", p.id), data: { lineItems: p.lineItems } }));
       b.transactions.forEach((t) => ops.push({ ref: base("transactions", t.id), data: stripId(t) }));
       b.wishlist.forEach((w) => ops.push({ ref: base("wishlist", w.id), data: stripId(w) }));
       restored?.forEach((t) => ops.push({ ref: base("trades", t.id), data: stripId(t) }));
+      b.transfers?.forEach((t) => ops.push({ ref: base("transfers", t.id), data: stripId(t) }));
+      b.extraIncome?.forEach((x) => ops.push({ ref: base("extraIncome", x.id), data: stripId(x) }));
       // Deletes first, then sets, so a restored doc with the same id survives.
       const deletes = ops.filter((o) => !o.data);
       const sets = ops.filter((o) => o.data);
       await chunkedWrite([...deletes, ...sets]);
     },
-    [transactions, wishlist, periods, trades, base, chunkedWrite]
+    [transactions, wishlist, periods, trades, transfers, extraIncome, base, chunkedWrite]
   );
 
   const value: DataContextValue = {
@@ -359,6 +399,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     wishlist,
     planning,
     trades,
+    transfers,
+    extraIncome,
     pending: pendingParts.size > 0,
     online,
     newId,
@@ -373,6 +415,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     savePlanning,
     saveTrade,
     deleteTrade,
+    saveTransfer,
+    deleteTransfer,
+    saveExtraIncome,
+    deleteExtraIncome,
     exportAll,
     replaceAll
   };

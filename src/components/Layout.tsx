@@ -11,7 +11,8 @@ import {
   Plus,
   RefreshCw,
   Settings as SettingsIcon,
-  Sofa
+  Sofa,
+  Wallet
 } from "lucide-react";
 import { useUI } from "../store/ui";
 import { useData } from "../store/data";
@@ -23,9 +24,10 @@ import { TransactionSheet } from "./TransactionSheet";
 const NAV = [
   { to: "/", label: "Dashboard", short: "Home", icon: House, end: true },
   { to: "/budget", label: "Period Budget", short: "Budget", icon: ListChecks },
+  { to: "/accounts", label: "Accounts", short: "Accounts", icon: Wallet },
+  { to: "/portfolio", label: "Portfolio", short: "Portfolio", icon: LineChart },
   { to: "/annual", label: "Annual Overview", short: "Year", icon: CalendarRange },
   { to: "/wishlist", label: "Wishlist", short: "Wishlist", icon: Sofa },
-  { to: "/portfolio", label: "Portfolio", short: "Portfolio", icon: LineChart },
   { to: "/planning", label: "Planning", short: "Planning", icon: NotebookPen },
   { to: "/settings", label: "Settings", short: "Settings", icon: SettingsIcon }
 ];

@@ -2,17 +2,32 @@ import { evaluate } from "./expr";
 import { normalizeDate, parseCSV, toCSV } from "./csv";
 import { round2 } from "./money";
 import { txPeriod } from "./calc";
-import type { Category, Settings, SubCategory, Transaction, WishItem } from "./types";
+import { accountLabel } from "./accounts";
+import type { Account, Category, Settings, SubCategory, Transaction, WishItem } from "./types";
 
 export const TX_HEADERS = ["Date", "Amount", "Category", "Sub-Category", "Description", "Notes"];
 
-export function transactionsToCSV(txs: Transaction[], subs: SubCategory[]): string {
+export function transactionsToCSV(txs: Transaction[], subs: SubCategory[], accounts: Account[] = []): string {
   const name = (id: string) => subs.find((s) => s.id === id)?.name ?? "";
+  const acct = (id?: string | null) => {
+    const a = id ? accounts.find((x) => x.id === id) : undefined;
+    return a ? accountLabel(a) : "";
+  };
   const sorted = [...txs].sort((a, b) => a.date.localeCompare(b.date));
   return toCSV(
-    [...TX_HEADERS, "Period", "Typed As"],
-    sorted.map((t) => [t.date, t.amount.toFixed(2), t.category, name(t.subId), t.description, t.notes, txPeriod(t), t.expression ?? ""])
+    [...TX_HEADERS, "Paid With", "Period", "Typed As"],
+    sorted.map((t) => [t.date, t.amount.toFixed(2), t.category, name(t.subId), t.description, t.notes, acct(t.accountId), txPeriod(t), t.expression ?? ""])
   );
+}
+
+/** Matches "Main card", "Local checking", or just "Main" when that nickname is unique. */
+export function matchAccount(raw: string, accounts: Account[]): Account | null {
+  const q = raw.trim().toLowerCase();
+  if (!q) return null;
+  const byLabel = accounts.find((a) => accountLabel(a).toLowerCase() === q);
+  if (byLabel) return byLabel;
+  const byName = accounts.filter((a) => a.name.toLowerCase() === q);
+  return byName.length === 1 ? byName[0] : null;
 }
 
 export function wishlistToCSV(items: WishItem[]): string {
@@ -51,7 +66,8 @@ export function parseTransactionsCSV(text: string, settings: Settings, newId: ()
     category: col("category"),
     sub: col("subcategory", "sub"),
     description: col("description", "desc"),
-    notes: col("notes", "note")
+    notes: col("notes", "note"),
+    account: col("paidwith", "account", "card")
   };
   const missing = (["date", "amount", "category", "sub"] as const).filter((k) => idx[k] < 0);
   if (missing.length) {
@@ -85,6 +101,9 @@ export function parseTransactionsCSV(text: string, settings: Settings, newId: ()
       subs.push(sub);
       result.newSubs.push(sub);
     }
+    const accountRaw = get(idx.account);
+    const account = matchAccount(accountRaw, settings.accounts);
+    if (accountRaw && !account) return result.errors.push({ row: rowNo, message: `Paid With "${accountRaw}" doesn't match an account, like "Main card" or "Local checking".` });
     const isMath = /[+*/]/.test(amountRaw.replace(/^\$/, "")) || /\d\s*-\s*\d/.test(amountRaw);
     result.ready.push({
       id: newId(),
@@ -95,7 +114,8 @@ export function parseTransactionsCSV(text: string, settings: Settings, newId: ()
       subId: sub.id,
       description: get(idx.description),
       notes: get(idx.notes),
-      periodOverride: null
+      periodOverride: null,
+      accountId: account?.id ?? null
     });
   });
   return result;

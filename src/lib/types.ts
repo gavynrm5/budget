@@ -35,6 +35,31 @@ export interface Settings {
   startPeriod: string;
   /** Free Twelve Data API key for stock prices. Empty until the user adds one. */
   twelveDataKey: string;
+  /** Bank accounts and credit cards, by nickname only. */
+  accounts: Account[];
+}
+
+export type AccountKind = "checking" | "savings" | "credit";
+export const ACCOUNT_KINDS: AccountKind[] = ["checking", "savings", "credit"];
+export const ACCOUNT_KIND_LABEL: Record<AccountKind, string> = { checking: "Checking", savings: "Savings", credit: "Credit card" };
+
+/**
+ * A bank account or credit card. Only a nickname is stored, never numbers or
+ * bank names. The balance is the one the user last set (for a card, the
+ * amount owed) plus everything logged after that.
+ */
+export interface Account {
+  id: string;
+  name: string;
+  kind: AccountKind;
+  order: number;
+  archived: boolean;
+  balance: number;
+  /** When `balance` was set (ms). Entries logged after it, and dated that day or later, move the balance. */
+  balanceSetAt: number;
+  creditLimit: number | null;
+  /** Day of the month a card payment is due, 1 to 31. */
+  dueDay: number | null;
 }
 
 /** One budget line inside a period. Category can differ from the sub's default. */
@@ -60,6 +85,37 @@ export interface Transaction {
   description: string;
   notes: string;
   periodOverride?: string | null; // "YYYY-MM" when manually set
+  createdAt?: number;
+  /** Account or card it was paid with. Missing or null means not set. */
+  accountId?: string | null;
+}
+
+/** Money moved between two of the user's own accounts, like paying a card from checking. */
+export interface Transfer {
+  id: string;
+  date: string; // YYYY-MM-DD
+  amount: number;
+  fromId: string;
+  toId: string;
+  notes: string;
+  createdAt?: number;
+}
+
+/** Part of an extra income entry assigned to a sub-category's budget in its period. */
+export interface Allocation {
+  subId: string;
+  amount: number;
+}
+
+/** Money outside regular pay, like a birthday gift or gambling winnings. */
+export interface ExtraIncome {
+  id: string;
+  date: string; // YYYY-MM-DD; its pay period comes from this date
+  amount: number;
+  source: string;
+  accountId: string | null;
+  notes: string;
+  allocations: Allocation[];
   createdAt?: number;
 }
 

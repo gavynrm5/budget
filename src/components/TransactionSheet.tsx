@@ -9,6 +9,7 @@ import { STARTER_HINTS } from "../lib/defaults";
 import { periodName, periodOfDate, periodRangeLabel, shiftPeriod, todayISO } from "../lib/periods";
 import { CATEGORIES, CATEGORY_LABEL, type Category, type Transaction } from "../lib/types";
 import { Sheet } from "./ui";
+import { AccountPicker, lastAccountId, rememberAccount } from "./AccountPicker";
 
 type Errors = Partial<Record<"amount" | "category" | "subId" | "date", string>>;
 
@@ -25,6 +26,7 @@ export function TransactionSheet() {
   const [description, setDescription] = useState(editing?.description ?? "");
   const [date, setDate] = useState(editing?.date ?? todayISO());
   const [notes, setNotes] = useState(editing?.notes ?? "");
+  const [accountId, setAccountId] = useState<string | null>(editing ? editing.accountId ?? null : lastAccountId(settings.accounts));
   const [override, setOverride] = useState<string | null>(editing?.periodOverride ?? preset?.periodId ?? null);
   const [showPeriodPicker, setShowPeriodPicker] = useState(!!(editing?.periodOverride ?? preset?.periodId));
   const [errors, setErrors] = useState<Errors>({});
@@ -121,13 +123,15 @@ export function TransactionSheet() {
       description: description.trim(),
       notes: notes.trim(),
       periodOverride: override && override !== autoPeriod ? override : null,
-      createdAt: editing?.createdAt
+      createdAt: editing?.createdAt,
+      accountId
     };
     data.saveTransaction(tx);
+    if (!editing) rememberAccount(accountId);
 
     // Remaining for this sub-category, computed with the saved transaction included.
     const next = [...transactions.filter((t) => t.id !== tx.id), tx];
-    const calc = computePeriod(txPeriod(tx), periods, next, settings);
+    const calc = computePeriod(txPeriod(tx), periods, next, settings, data.extraIncome);
     const line = Object.values(calc.groups).flatMap((g) => g.lines).find((l) => l.item.subId === tx.subId);
     const name = subName(tx.subId);
     let detail: string;
@@ -273,6 +277,8 @@ export function TransactionSheet() {
           )}
           {errors.subId && <p role="alert" className="mt-1 text-sm text-bad">{errors.subId}</p>}
         </fieldset>
+
+        <AccountPicker id="tx-account" label="Paid with" accounts={settings.accounts} value={accountId} onChange={setAccountId} />
 
         {/* Description with suggestions */}
         <div className="relative">
