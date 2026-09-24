@@ -1,315 +1,276 @@
-import { useMemo, useState, type FormEvent } from "react";
-import { ExternalLink, Pencil, Plus, Sofa, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { ArrowDown, ArrowLeft, ArrowUp, Check, ExternalLink, FolderPlus, ImageOff, PiggyBank, Plus, Settings2, Sofa } from "lucide-react";
 import { useData } from "../store/data";
 import { useUI } from "../store/ui";
-import { fmt, round2, sum } from "../lib/money";
-import { evaluate } from "../lib/expr";
-import { WISH_STATUSES, type WishItem, type WishStatus } from "../lib/types";
-import { MoneyInput } from "../components/MoneyInput";
-import { EmptyState, Money, PageHeader, Sheet } from "../components/ui";
-
-const STATUS_STYLE: Record<WishStatus, string> = {
-  Idea: "bg-surface-2 text-muted border-line",
-  Want: "bg-primary/10 text-primary border-primary/30",
-  Ordered: "bg-warn/15 text-warn border-warn/40",
-  Delivered: "bg-good/10 text-good border-good/40"
-};
-
-const total = (w: WishItem) => round2(w.price * (w.qty ?? 1));
-
-function asUrl(link: string): string | null {
-  const s = link.trim();
-  if (!s || /\s/.test(s)) return null;
-  if (/^https?:\/\//i.test(s)) return s;
-  if (/^[\w-]+(\.[\w-]+)+(\/.*)?$/.test(s)) return `https://${s}`;
-  return null;
-}
+import { fmt, pct } from "../lib/money";
+import { currentPeriodId, formatDate } from "../lib/periods";
+import { asUrl, itemTotal, listSummary, safeImage, type ListSummary } from "../lib/wishlist";
+import type { WishItem, WishList } from "../lib/types";
+import { EmptyState, PageHeader } from "../components/ui";
+import { ItemSheet, ListSheet } from "../components/WishlistSheets";
 
 export default function Wishlist() {
-  const { wishlist, settings, updateSettings, saveWish, deleteWish } = useData();
-  const { deleteWithUndo } = useUI();
-  const [room, setRoom] = useState("all");
-  const [cat, setCat] = useState("all");
-  const [status, setStatus] = useState<WishStatus | "all">("all");
-  const [editing, setEditing] = useState<WishItem | "new" | null>(null);
+  const { listId } = useParams();
+  return listId ? <ListPage listId={listId} /> : <Lists />;
+}
 
-  const rooms = useMemo(() => [...new Set([...settings.wishlistRooms, ...wishlist.map((w) => w.room).filter(Boolean)])], [settings.wishlistRooms, wishlist]);
-  const cats = useMemo(() => [...new Set([...settings.wishlistCategories, ...wishlist.map((w) => w.category).filter(Boolean)])], [settings.wishlistCategories, wishlist]);
+function Progress({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="h-2.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-label={label} aria-valuenow={Math.round(value * 100)} aria-valuemin={0} aria-valuemax={100}>
+      <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${value * 100}%` }} />
+    </div>
+  );
+}
 
-  const totalBudget = sum(wishlist.map(total));
-  const totalSpent = sum(wishlist.filter((w) => w.status === "Ordered" || w.status === "Delivered").map(total));
-  const saved = settings.wishlistSaved;
-  const progress = totalBudget > 0 ? Math.min(1, saved / totalBudget) : 0;
+function paceText(s: ListSummary, target: string | null) {
+  if (!target) return null;
+  if (s.left <= 0) return `Goal reached, target ${formatDate(target)}`;
+  if (!s.periodsLeft) return `Target ${formatDate(target)} has passed, ${fmt(s.left)} to go`;
+  return `${fmt(s.perPeriod ?? 0)} per pay period to reach it by ${formatDate(target)}`;
+}
 
-  const rows = wishlist.filter((w) => (room === "all" || w.room === room) && (cat === "all" || w.category === cat) && (status === "all" || w.status === status));
-
-  const cycle = (w: WishItem) => {
-    const next = WISH_STATUSES[(WISH_STATUSES.indexOf(w.status) + 1) % WISH_STATUSES.length];
-    saveWish({ ...w, status: next });
-  };
-
-  const remove = (w: WishItem) =>
-    deleteWithUndo({ what: w.item || "item", remove: () => deleteWish(w.id), restore: () => saveWish(w) });
-
-  const StatusPill = ({ w }: { w: WishItem }) => {
-    const next = WISH_STATUSES[(WISH_STATUSES.indexOf(w.status) + 1) % WISH_STATUSES.length];
-    return (
-      <button
-        onClick={() => cycle(w)}
-        className={`inline-flex min-h-[36px] items-center rounded-full border px-3 text-xs font-semibold transition-colors duration-150 ${STATUS_STYLE[w.status]}`}
-        aria-label={`Status ${w.status}. Tap to change to ${next}.`}
-        title={`Tap to change to ${next}`}
-      >
-        {w.status}
-      </button>
-    );
-  };
-
-  const LinkCell = ({ link }: { link: string }) => {
-    const url = asUrl(link);
-    if (!link) return <span className="text-muted">-</span>;
-    if (!url) return <span>{link}</span>;
-    let host = link;
-    try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep raw */ }
-    return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-[36px] items-center gap-1 text-primary hover:underline">
-        {host} <ExternalLink size={13} aria-hidden /><span className="sr-only">(opens in a new tab)</span>
-      </a>
-    );
-  };
+/** All lists with their goal progress. */
+function Lists() {
+  const { wishLists, wishlist, transactions } = useData();
+  const navigate = useNavigate();
+  const [creating, setCreating] = useState(false);
+  const period = currentPeriodId();
 
   return (
     <>
       <PageHeader
         title="Wishlist"
-        subtitle="Furniture and home goals"
-        actions={<button className="btn-primary" onClick={() => setEditing("new")}><Plus size={18} aria-hidden /> Add item</button>}
+        subtitle="Lists and savings goals"
+        actions={<button className="btn-primary" onClick={() => setCreating(true)}><FolderPlus size={18} aria-hidden /> New list</button>}
       />
-
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <div className="card p-4"><p className="text-sm text-muted">Total Items</p><p className="num mt-1 text-2xl font-semibold">{wishlist.length}</p></div>
-        <div className="card p-4"><p className="text-sm text-muted">Total Budget</p><p className="num mt-1 text-2xl font-semibold">{fmt(totalBudget)}</p></div>
-        <div className="card p-4"><p className="text-sm text-muted">Total Spent</p><p className="num mt-1 text-2xl font-semibold">{fmt(totalSpent)}</p><p className="text-xs text-muted">Ordered or delivered</p></div>
-        <div className="card p-4">
-          <label htmlFor="wl-saved" className="text-sm text-muted">Total Saved</label>
-          <div className="mt-1"><MoneyInput id="wl-saved" value={saved} label="Total saved toward wishlist" onCommit={(v) => updateSettings({ wishlistSaved: v })} className="text-lg font-semibold" /></div>
-        </div>
-      </div>
-
-      <div className="card mb-5 p-4">
-        <div className="mb-2 flex justify-between text-sm">
-          <span className="font-medium">Saved toward the goal</span>
-          <span className="num text-muted">{fmt(saved)} of {fmt(totalBudget)}, {(progress * 100).toFixed(0)}%</span>
-        </div>
-        <div className="h-3 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-label="Saved versus total budget" aria-valuenow={Math.round(progress * 100)} aria-valuemin={0} aria-valuemax={100}>
-          <div className="h-full rounded-full bg-good transition-[width] duration-300" style={{ width: `${progress * 100}%` }} />
-        </div>
-      </div>
-
-      <div className="mb-4 grid grid-cols-3 gap-2 sm:flex sm:gap-3">
-        <div className="sm:w-48">
-          <label htmlFor="wl-room" className="label">Room</label>
-          <select id="wl-room" className="input" value={room} onChange={(e) => setRoom(e.target.value)}>
-            <option value="all">All rooms</option>
-            {rooms.map((r) => <option key={r}>{r}</option>)}
-          </select>
-        </div>
-        <div className="sm:w-48">
-          <label htmlFor="wl-cat" className="label">Category</label>
-          <select id="wl-cat" className="input" value={cat} onChange={(e) => setCat(e.target.value)}>
-            <option value="all">All</option>
-            {cats.map((c) => <option key={c}>{c}</option>)}
-          </select>
-        </div>
-        <div className="sm:w-48">
-          <label htmlFor="wl-status" className="label">Status</label>
-          <select id="wl-status" className="input" value={status} onChange={(e) => setStatus(e.target.value as WishStatus | "all")}>
-            <option value="all">All</option>
-            {WISH_STATUSES.map((s) => <option key={s}>{s}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {wishlist.length === 0 ? (
+      {wishLists.length === 0 ? (
         <div className="card">
-          <EmptyState icon={<Sofa size={22} />} title="Your wishlist is empty.">Add the first piece you have your eye on.</EmptyState>
+          <EmptyState icon={<Sofa size={22} />} title="No lists yet.">
+            Make a list for each goal, like Furniture or a trip, and add items with photos and links.
+          </EmptyState>
         </div>
-      ) : rows.length === 0 ? (
-        <p className="card p-6 text-center text-muted">Nothing matches these filters.</p>
       ) : (
-        <>
-          <div className="card hidden overflow-x-auto md:block">
-            <table className="w-full">
-              <caption className="sr-only">Wishlist items</caption>
-              <thead className="border-b border-line">
-                <tr>
-                  <th className="th pl-5">Item</th><th className="th">Category</th><th className="th">Room</th><th className="th">Status</th>
-                  <th className="th text-right">Price</th><th className="th text-right">Qty</th><th className="th text-right">Total</th><th className="th">Link</th>
-                  <th className="th pr-5"><span className="sr-only">Actions</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((w) => (
-                  <tr key={w.id} className="border-b border-line/60 last:border-0">
-                    <th scope="row" className="td pl-5 text-left font-medium" title={w.notes || undefined}>{w.item}</th>
-                    <td className="td text-sm">{w.category}</td>
-                    <td className="td text-sm">{w.room}</td>
-                    <td className="td"><StatusPill w={w} /></td>
-                    <td className="td text-right"><Money value={w.price} /></td>
-                    <td className="td num text-right">{w.qty ?? <span className="text-muted">1</span>}</td>
-                    <td className="td text-right font-medium"><Money value={total(w)} /></td>
-                    <td className="td text-sm"><LinkCell link={w.link} /></td>
-                    <td className="td pr-5 text-right">
-                      <button className="icon-btn" onClick={() => setEditing(w)} aria-label={`Edit ${w.item}`}><Pencil size={17} /></button>
-                      <button className="icon-btn hover:text-bad" onClick={() => remove(w)} aria-label={`Delete ${w.item}`}><Trash2 size={17} /></button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <ul className="grid gap-3 md:hidden">
-            {rows.map((w) => (
-              <li key={w.id} className="card p-4">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-semibold">{w.item}</p>
-                    <p className="text-sm text-muted">{[w.category, w.room].filter(Boolean).join(", ")}</p>
+        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {wishLists.map((l) => {
+            const s = listSummary(l, wishlist, transactions, period);
+            const thumbs = wishlist.filter((w) => w.listId === l.id && safeImage(w.image)).sort((a, b) => a.order - b.order).slice(0, 4);
+            const pace = paceText(s, l.targetDate);
+            return (
+              <li key={l.id}>
+                <Link to={`/wishlist/${l.id}`} className="card block h-full p-4 transition-colors hover:bg-surface-2/40">
+                  {thumbs.length > 0 && (
+                    <div className="mb-3 grid h-24 grid-cols-4 gap-1 overflow-hidden rounded-xl">
+                      {thumbs.map((w) => <img key={w.id} src={safeImage(w.image)!} alt="" loading="lazy" className="h-24 w-full object-cover" />)}
+                    </div>
+                  )}
+                  <div className="flex items-baseline justify-between gap-2">
+                    <h2 className="truncate text-lg">{l.name}</h2>
+                    <span className="shrink-0 text-sm text-muted">{s.count} {s.count === 1 ? "item" : "items"}</span>
                   </div>
-                  <StatusPill w={w} />
-                </div>
-                <div className="mt-2 flex items-center justify-between text-sm">
-                  <span className="num text-muted">{fmt(w.price)} x {w.qty ?? 1}</span>
-                  <Money value={total(w)} className="text-base font-semibold" />
-                </div>
-                {w.notes && <p className="mt-1 text-sm text-muted">{w.notes}</p>}
-                <div className="mt-2 flex items-center justify-between">
-                  <LinkCell link={w.link} />
-                  <div>
-                    <button className="icon-btn" onClick={() => setEditing(w)} aria-label={`Edit ${w.item}`}><Pencil size={17} /></button>
-                    <button className="icon-btn hover:text-bad" onClick={() => remove(w)} aria-label={`Delete ${w.item}`}><Trash2 size={17} /></button>
-                  </div>
-                </div>
+                  <p className="num mt-1 text-sm">
+                    <strong>{fmt(s.saved)}</strong> <span className="text-muted">saved of {fmt(s.goal)}</span>
+                  </p>
+                  <div className="mt-2"><Progress value={s.progress} label={`${l.name} saved toward goal`} /></div>
+                  {pace && <p className="mt-2 text-xs text-muted">{pace}</p>}
+                </Link>
               </li>
-            ))}
-          </ul>
-        </>
+            );
+          })}
+        </ul>
       )}
-
-      {editing && <WishSheet item={editing === "new" ? null : editing} rooms={rooms} cats={cats} onClose={() => setEditing(null)} />}
+      {creating && <ListSheet list={null} onClose={() => setCreating(false)} onCreated={(id) => navigate(`/wishlist/${id}`)} />}
     </>
   );
 }
 
-function WishSheet({ item, rooms, cats, onClose }: { item: WishItem | null; rooms: string[]; cats: string[]; onClose: () => void }) {
-  const { saveWish, newId, wishlist, settings, updateSettings } = useData();
-  const { toast } = useUI();
-  const [f, setF] = useState({
-    item: item?.item ?? "",
-    category: item?.category ?? cats[0] ?? "",
-    room: item?.room ?? "",
-    status: item?.status ?? ("Idea" as WishStatus),
-    price: item ? item.price.toFixed(2) : "",
-    qty: item?.qty != null ? String(item.qty) : "",
-    link: item?.link ?? "",
-    notes: item?.notes ?? ""
-  });
-  const [err, setErr] = useState<Record<string, string>>({});
-  const set = (k: keyof typeof f, v: string) => setF((p) => ({ ...p, [k]: v }));
+type Show = "all" | "open" | "bought";
 
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    const errs: Record<string, string> = {};
-    let price = 0;
-    if (!f.item.trim()) errs.item = "Name the item.";
-    try { price = f.price.trim() ? round2(evaluate(f.price)) : 0; if (price < 0) errs.price = "Price cannot be negative."; } catch { errs.price = "Enter a price like 249.99."; }
-    let qty: number | null = null;
-    if (f.qty.trim()) {
-      qty = Number(f.qty);
-      if (!Number.isFinite(qty) || qty <= 0) errs.qty = "Quantity must be more than 0, or blank for 1.";
-    }
-    setErr(errs);
-    if (Object.keys(errs).length) return;
-    const category = f.category.trim();
-    const room = f.room.trim();
-    const patch: Partial<typeof settings> = {};
-    if (category && !settings.wishlistCategories.includes(category)) patch.wishlistCategories = [...settings.wishlistCategories, category];
-    if (room && !settings.wishlistRooms.includes(room)) patch.wishlistRooms = [...settings.wishlistRooms, room];
-    if (Object.keys(patch).length) updateSettings(patch);
-    saveWish({
-      id: item?.id ?? newId(),
-      item: f.item.trim(),
-      category,
-      room,
-      status: f.status,
-      price,
-      qty,
-      link: f.link.trim(),
-      notes: f.notes.trim(),
-      order: item?.order ?? (wishlist.length ? Math.max(...wishlist.map((w) => w.order)) + 1 : 0)
-    });
-    toast({ message: item ? "Item updated" : "Item added", tone: "good" }, 2500);
-    onClose();
+/** One list: goal, filters by its own dropdowns, and its items in priority order. */
+function ListPage({ listId }: { listId: string }) {
+  const { wishLists, wishlist, transactions, settings, saveWish } = useData();
+  const { openTxSheet } = useUI();
+  const list = wishLists.find((l) => l.id === listId);
+  const [editingList, setEditingList] = useState(false);
+  const [itemSheet, setItemSheet] = useState<WishItem | "new" | null>(null);
+  const [filters, setFilters] = useState<Record<string, string>>({});
+  const [show, setShow] = useState<Show>("all");
+
+  const items = useMemo(() => wishlist.filter((w) => w.listId === listId).sort((a, b) => a.order - b.order), [wishlist, listId]);
+  if (!list) {
+    return (
+      <>
+        <BackLink />
+        <p className="card p-6 text-center text-muted">This list doesn't exist anymore.</p>
+      </>
+    );
+  }
+  const s = listSummary(list, wishlist, transactions, currentPeriodId());
+  const pace = paceText(s, list.targetDate);
+  const fund = list.subId ? settings.subCategories.find((x) => x.id === list.subId) : undefined;
+  const rows = items.filter(
+    (w) =>
+      (show === "all" || (show === "bought" ? w.bought : !w.bought)) &&
+      Object.entries(filters).every(([fid, v]) => !v || (w.values?.[fid] ?? "") === v)
+  );
+  const filtered = rows.length !== items.length;
+
+  // Swap with the neighbor in the visible order, so moving works with filters on too.
+  const move = (w: WishItem, dir: -1 | 1) => {
+    const i = rows.findIndex((x) => x.id === w.id);
+    const other = rows[i + dir];
+    if (!other) return;
+    saveWish({ ...w, order: other.order });
+    saveWish({ ...other, order: w.order });
   };
 
   return (
-    <Sheet
-      title={item ? "Edit item" : "Add wishlist item"}
-      onClose={onClose}
-      footer={
-        <div className="flex justify-end gap-2">
-          <button className="btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" type="submit" form="wish-form">{item ? "Save changes" : "Add item"}</button>
-        </div>
-      }
-    >
-      <form id="wish-form" onSubmit={submit} className="grid grid-cols-2 gap-4" noValidate>
-        <div className="col-span-2">
-          <label htmlFor="w-item" className="label">Item <span className="text-bad" aria-hidden>*</span></label>
-          <input id="w-item" className="input" value={f.item} onChange={(e) => set("item", e.target.value)} aria-invalid={!!err.item} />
-          {err.item && <p role="alert" className="mt-1 text-sm text-bad">{err.item}</p>}
-        </div>
-        <div>
-          <label htmlFor="w-cat" className="label">Category</label>
-          <input id="w-cat" list="w-cat-list" className="input" value={f.category} onChange={(e) => set("category", e.target.value)} />
-          <datalist id="w-cat-list">{cats.map((c) => <option key={c} value={c} />)}</datalist>
-        </div>
-        <div>
-          <label htmlFor="w-room" className="label">Room</label>
-          <input id="w-room" list="w-room-list" className="input" value={f.room} onChange={(e) => set("room", e.target.value)} />
-          <datalist id="w-room-list">{rooms.map((r) => <option key={r} value={r} />)}</datalist>
-        </div>
-        <fieldset className="col-span-2">
-          <legend className="label">Status</legend>
-          <div className="grid grid-cols-4 gap-2" role="radiogroup" aria-label="Status">
-            {WISH_STATUSES.map((s) => (
-              <button key={s} type="button" role="radio" aria-checked={f.status === s} onClick={() => set("status", s)}
-                className={`min-h-[44px] rounded-xl border text-sm font-medium ${f.status === s ? STATUS_STYLE[s] + " border-2" : "border-line"}`}>
-                {s}
-              </button>
-            ))}
+    <>
+      <BackLink />
+      <PageHeader
+        title={list.name}
+        subtitle={`${s.count} ${s.count === 1 ? "item" : "items"}${s.boughtCount ? `, ${s.boughtCount} bought (${fmt(s.boughtTotal)})` : ""}`}
+        actions={
+          <>
+            <button className="btn-outline" onClick={() => setEditingList(true)}><Settings2 size={17} aria-hidden /> <span className="hidden sm:inline">Edit list</span><span className="sm:hidden">Edit</span></button>
+            <button className="btn-primary" onClick={() => setItemSheet("new")}><Plus size={18} aria-hidden /> Add item</button>
+          </>
+        }
+      />
+
+      <section aria-label="Goal" className="card mb-4 p-4 sm:p-5">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div><p className="text-sm text-muted">Goal</p><p className="num text-xl font-semibold">{fmt(s.goal)}</p><p className="text-xs text-muted">{list.goalAmount != null ? "Set by you" : "Total of items"}</p></div>
+          <div><p className="text-sm text-muted">Saved</p><p className="num text-xl font-semibold">{fmt(s.saved)}</p><p className="text-xs text-muted">{pct(s.progress, 0)} of goal</p></div>
+          <div><p className="text-sm text-muted">Left to save</p><p className="num text-xl font-semibold">{fmt(s.left)}</p></div>
+          <div>
+            <p className="text-sm text-muted">Per pay period</p>
+            <p className="num text-xl font-semibold">{s.perPeriod != null ? fmt(s.perPeriod) : "-"}</p>
+            <p className="text-xs text-muted">{list.targetDate ? `By ${formatDate(list.targetDate)}` : "Set a target date"}</p>
           </div>
-        </fieldset>
-        <div>
-          <label htmlFor="w-price" className="label">Price</label>
-          <input id="w-price" inputMode="decimal" className="input num" placeholder="0.00" value={f.price} onChange={(e) => set("price", e.target.value)} aria-invalid={!!err.price} />
-          {err.price && <p role="alert" className="mt-1 text-sm text-bad">{err.price}</p>}
         </div>
-        <div>
-          <label htmlFor="w-qty" className="label">Qty</label>
-          <input id="w-qty" inputMode="numeric" className="input num" placeholder="1" value={f.qty} onChange={(e) => set("qty", e.target.value)} aria-invalid={!!err.qty} aria-describedby="w-qty-help" />
-          <p id="w-qty-help" className="mt-1 text-xs text-muted">Blank means 1</p>
-          {err.qty && <p role="alert" className="mt-1 text-sm text-bad">{err.qty}</p>}
+        <div className="mt-4"><Progress value={s.progress} label={`${list.name} saved toward goal`} /></div>
+        {pace && <p className="mt-2 text-sm text-muted">{pace}</p>}
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-3 text-sm">
+          {fund ? (
+            <>
+              <span className="text-muted">
+                {fmt(list.startingSaved)} to start + {fmt(s.contributions)} logged to <strong className="text-ink">{fund.name}</strong>
+              </span>
+              <button className="btn-ghost min-h-[40px] px-3 text-sm text-primary" onClick={() => openTxSheet({ preset: { category: fund.category, subId: fund.id } })}>
+                <PiggyBank size={16} aria-hidden /> Add contribution
+              </button>
+            </>
+          ) : (
+            <span className="text-muted">Not tracked in your budget. Turn it on in Edit list to count contributions.</span>
+          )}
         </div>
-        <div className="col-span-2">
-          <label htmlFor="w-link" className="label">Link or store</label>
-          <input id="w-link" className="input" placeholder="https://... or Wayfair" value={f.link} onChange={(e) => set("link", e.target.value)} />
+      </section>
+
+      {items.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-end gap-2 sm:gap-3">
+          <div className="min-w-[130px] flex-1 sm:flex-none">
+            <label htmlFor="show" className="label">Show</label>
+            <select id="show" className="input" value={show} onChange={(e) => setShow(e.target.value as Show)}>
+              <option value="all">All items</option>
+              <option value="open">Still to buy</option>
+              <option value="bought">Bought</option>
+            </select>
+          </div>
+          {list.fields.filter((f) => f.options.length).map((f) => (
+            <div key={f.id} className="min-w-[130px] flex-1 sm:flex-none">
+              <label htmlFor={`flt-${f.id}`} className="label">{f.name}</label>
+              <select id={`flt-${f.id}`} className="input" value={filters[f.id] ?? ""} onChange={(e) => setFilters((x) => ({ ...x, [f.id]: e.target.value }))}>
+                <option value="">All</option>
+                {f.options.map((o) => <option key={o}>{o}</option>)}
+              </select>
+            </div>
+          ))}
+          {filtered && <p className="num ml-auto self-center text-sm text-muted">{rows.length} shown, {fmt(rows.reduce((a, w) => a + itemTotal(w), 0))}</p>}
         </div>
-        <div className="col-span-2">
-          <label htmlFor="w-notes" className="label">Notes</label>
-          <textarea id="w-notes" rows={2} className="input" value={f.notes} onChange={(e) => set("notes", e.target.value)} />
+      )}
+
+      {items.length === 0 ? (
+        <div className="card">
+          <EmptyState icon={<Sofa size={22} />} title={`${list.name} is empty.`}>Add the first item with a photo and a link.</EmptyState>
         </div>
-      </form>
-    </Sheet>
+      ) : rows.length === 0 ? (
+        <p className="card p-6 text-center text-muted">Nothing matches these filters.</p>
+      ) : (
+        <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {rows.map((w, i) => (
+            <ItemCard key={w.id} item={w} list={list} first={i === 0} last={i === rows.length - 1} onEdit={() => setItemSheet(w)} onMove={(d) => move(w, d)} />
+          ))}
+        </ul>
+      )}
+
+      {editingList && <ListSheet list={list} onClose={() => setEditingList(false)} />}
+      {itemSheet && <ItemSheet list={list} item={itemSheet === "new" ? null : itemSheet} onClose={() => setItemSheet(null)} />}
+    </>
+  );
+}
+
+function BackLink() {
+  return (
+    <Link to="/wishlist" className="mb-2 inline-flex min-h-[44px] items-center gap-1.5 text-sm font-medium text-muted hover:text-ink">
+      <ArrowLeft size={16} aria-hidden /> All lists
+    </Link>
+  );
+}
+
+function ItemCard({ item, list, first, last, onEdit, onMove }: { item: WishItem; list: WishList; first: boolean; last: boolean; onEdit: () => void; onMove: (d: -1 | 1) => void }) {
+  const { saveWish } = useData();
+  const [broken, setBroken] = useState(false);
+  const img = safeImage(item.image);
+  const url = asUrl(item.link);
+  const chips = list.fields.map((f) => item.values?.[f.id]).filter(Boolean) as string[];
+  let host = "";
+  if (url) {
+    try { host = new URL(url).hostname.replace(/^www\./, ""); } catch { /* keep blank */ }
+  }
+
+  return (
+    <li className={`card flex flex-col overflow-hidden ${item.bought ? "opacity-75" : ""}`}>
+      <button className="relative block aspect-[4/3] w-full bg-surface-2 text-left" onClick={onEdit} aria-label={`Edit ${item.item}`}>
+        {img && !broken ? (
+          <img src={img} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setBroken(true)} />
+        ) : (
+          <span className="flex h-full w-full items-center justify-center text-muted">{broken ? <ImageOff size={28} aria-hidden /> : <Sofa size={28} aria-hidden />}</span>
+        )}
+        {item.bought && (
+          <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-full bg-good px-2 py-0.5 text-xs font-semibold text-white dark:text-bg">
+            <Check size={13} aria-hidden /> Bought
+          </span>
+        )}
+      </button>
+      <div className="flex flex-1 flex-col p-3.5">
+        <div className="flex items-start justify-between gap-2">
+          <button className="min-w-0 text-left font-semibold hover:text-primary" onClick={onEdit}>{item.item}</button>
+          <span className="num shrink-0 font-semibold">{fmt(itemTotal(item))}</span>
+        </div>
+        {(item.qty ?? 1) !== 1 && <p className="num text-xs text-muted">{fmt(item.price)} x {item.qty}</p>}
+        {chips.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {chips.map((c, k) => <span key={k} className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">{c}</span>)}
+          </div>
+        )}
+        {item.notes && <p className="mt-1.5 line-clamp-2 text-sm text-muted">{item.notes}</p>}
+        <div className="mt-auto flex items-center gap-1 pt-2">
+          {url ? (
+            <a href={url} target="_blank" rel="noopener noreferrer" className="btn-outline min-h-[40px] min-w-0 px-3 text-sm">
+              <ExternalLink size={15} aria-hidden /> <span className="truncate">{host || "Open"}</span><span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          ) : (
+            <span className="text-xs text-muted">No link</span>
+          )}
+          <label className="ml-auto flex min-h-[40px] cursor-pointer items-center gap-1.5 px-1 text-sm">
+            <input type="checkbox" className="h-5 w-5 accent-[rgb(var(--primary))]" checked={!!item.bought} onChange={(e) => saveWish({ ...item, bought: e.target.checked })} />
+            Bought
+          </label>
+          <button className="icon-btn h-10 w-10" disabled={first} onClick={() => onMove(-1)} aria-label={`Move ${item.item} up`}><ArrowUp size={16} /></button>
+          <button className="icon-btn h-10 w-10" disabled={last} onClick={() => onMove(1)} aria-label={`Move ${item.item} down`}><ArrowDown size={16} /></button>
+        </div>
+      </div>
+    </li>
   );
 }

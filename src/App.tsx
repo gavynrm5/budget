@@ -48,6 +48,7 @@ function Gate() {
             <Route path="/budget/:periodId" element={<PeriodBudget />} />
             <Route path="/annual" element={<Annual />} />
             <Route path="/wishlist" element={<Wishlist />} />
+            <Route path="/wishlist/:listId" element={<Wishlist />} />
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/portfolio/:symbol" element={<Stock />} />

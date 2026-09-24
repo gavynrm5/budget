@@ -170,6 +170,17 @@ The **Accounts** page tracks your bank accounts and credit cards by nickname onl
 - **Cards:** add a credit limit to see how much of it you're using (under 30% is the usual goal) and a due day to get a reminder on the Dashboard the week it's due.
 - **Add account** adds a new card or bank account. An account with entries can be archived but not deleted, so its history stays.
 
+## Wishlist lists and goals
+
+The **Wishlist** holds lists (folders), each with its own savings goal, like Furniture or a trip.
+
+- **New list:** name it, and optionally set a goal amount (blank uses the total of its items), a target date, and how much is already saved. **Track in my budget** adds a "<list> fund" line under Savings. Whatever you log to that line counts toward the goal, and the line shows the goal's progress.
+- **Dropdowns:** each list has its own, like Room or Style. Add them in **Edit list**, or type a new choice while adding an item and it's saved to the dropdown.
+- **Items:** name, price, quantity, a link to the store, and a photo. **Upload photo** shrinks it (to about 900px wide) and stores it with your data for free. You can also paste an image link that starts with https. Check **Bought** when you buy it, and use the arrows to put the most important items first.
+- With a target date, the list shows how much to save each pay period to get there.
+
+Items from before lists existed were moved into a list called Furniture, with their categories, rooms and status as its dropdowns.
+
 ## Extra income
 
 Money outside your paycheck, like a birthday gift or gambling winnings, goes under **Extra income** on the Period Budget. After adding it, **Assign** it: lines that are over budget are listed first with a one-tap **Cover**, and any amount can go into any sub-category. Assigned money raises what's available on that line for that pay period without changing your planned budget. Anything not assigned stays in that period to assign later.
@@ -197,7 +208,7 @@ The free plan allows 8 price requests a minute and 800 a day. Each stock uses ab
 
 Everything already lives in Firestore, but you can keep your own copies:
 
-- **Settings > Full backup (JSON)** saves everything: settings and accounts, every period budget, transactions, transfers, extra income, wishlist, planning lines, and your portfolio.
+- **Settings > Full backup (JSON)** saves everything: settings and accounts, every period budget, transactions, transfers, extra income, wishlist lists and items, planning lines, and your portfolio.
 - **Restore JSON backup** replaces all current data with a backup (it asks first).
 - Transactions and wishlist can also be exported as CSV to open in a spreadsheet.
 
@@ -268,6 +279,7 @@ Firestore layout, all under `users/{your uid}/`:
 - `periods/{YYYY-MM}` holds that period's budget lines
 - `transactions/{id}` and `wishlist/{id}` hold one document each
 - `trades/{id}` holds one buy or sale each
+- `wishLists/{id}` holds one wishlist folder with its goal and dropdowns; each `wishlist/{id}` item points to its list
 - `transfers/{id}` holds one transfer between accounts, and `extraIncome/{id}` one extra income entry with where it was assigned
 - Accounts and cards live in `meta/settings` with their nickname, last set balance, limit, and due day
 

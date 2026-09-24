@@ -80,7 +80,7 @@ export default function Settings() {
   // Import and export
   const exportJSON = () => download(`budget-backup-${stamp}.json`, JSON.stringify(data.exportAll(), null, 2), "application/json");
   const exportTxCSV = () => download(`transactions-${stamp}.csv`, transactionsToCSV(data.transactions, settings.subCategories, settings.accounts), "text/csv");
-  const exportWishCSV = () => download(`wishlist-${stamp}.csv`, wishlistToCSV(data.wishlist), "text/csv");
+  const exportWishCSV = () => download(`wishlist-${stamp}.csv`, wishlistToCSV(data.wishlist, data.wishLists), "text/csv");
 
   const onJSON = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

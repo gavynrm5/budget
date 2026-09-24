@@ -124,15 +124,47 @@ export const WISH_STATUSES: WishStatus[] = ["Idea", "Want", "Ordered", "Delivere
 
 export interface WishItem {
   id: string;
+  /** The list (folder) it belongs to. Missing only on items from before lists existed. */
+  listId?: string;
   item: string;
-  category: string;
-  room: string;
-  status: WishStatus;
   price: number;
   qty: number | null; // null means 1
   link: string;
   notes: string;
+  /** Position in its list, lowest first. */
   order: number;
+  /** A photo (shrunk, stored as a data: URL) or an https image link. */
+  image?: string;
+  /** The item's choice for each of its list's dropdowns, by field id. */
+  values?: Record<string, string>;
+  bought?: boolean;
+  // First version fields, only read when converting old items into a list.
+  category?: string;
+  room?: string;
+  status?: WishStatus;
+}
+
+/** A dropdown the user defines on a list, like Room or Style, with its choices. */
+export interface ListField {
+  id: string;
+  name: string;
+  options: string[];
+}
+
+/** A wishlist folder with its own savings goal, like Furniture. */
+export interface WishList {
+  id: string;
+  name: string;
+  order: number;
+  /** Sub-category whose transactions count as contributions, shown as a Period Budget line. */
+  subId: string | null;
+  /** Already saved before tracking started. */
+  startingSaved: number;
+  /** Goal amount when set by hand; otherwise the total of its items. */
+  goalAmount: number | null;
+  targetDate: string | null; // YYYY-MM-DD
+  fields: ListField[];
+  createdAt?: number;
 }
 
 export interface PlanLine {

@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { listSummary } from "../lib/wishlist";
 import { Gift, Info, Pencil, Plus, Trash2 } from "lucide-react";
 import { useData } from "../store/data";
 import { useUI } from "../store/ui";
@@ -73,6 +74,17 @@ export default function PeriodBudget() {
 
   const targetSum = CATEGORIES.reduce((a, c) => a + settings.targets[c], 0);
 
+  // Lines that fund a wishlist goal show its progress.
+  const goals = useMemo(() => {
+    const m = new Map<string, GoalInfo>();
+    for (const l of data.wishLists) {
+      if (!l.subId) continue;
+      const sm = listSummary(l, data.wishlist, transactions, currentPeriodId());
+      m.set(l.subId, { listId: l.id, name: l.name, saved: sm.saved, goal: sm.goal, progress: sm.progress });
+    }
+    return m;
+  }, [data.wishLists, data.wishlist, transactions]);
+
   return (
     <>
       <PageHeader
@@ -124,6 +136,7 @@ export default function PeriodBudget() {
             key={c}
             group={calc.groups[c]}
             saved={saved}
+            goals={goals}
             onLive={setDraft}
             onCommit={setBudget}
             onMove={moveLine}
@@ -192,6 +205,7 @@ function Stat({ label, value, extra }: { label: string; value: ReactNode; extra?
 function GroupSection({
   group,
   saved,
+  goals,
   onLive,
   onCommit,
   onMove,
@@ -200,6 +214,7 @@ function GroupSection({
 }: {
   group: GroupCalc;
   saved: Map<string, number>;
+  goals: Map<string, GoalInfo>;
   onLive: (id: string, v: number) => void;
   onCommit: (id: string, v: number) => void;
   onMove: (id: string, c: Category) => void;
@@ -240,7 +255,10 @@ function GroupSection({
           <tbody>
             {group.lines.map((l) => (
               <tr key={l.item.id} className="border-b border-line/60">
-                <th scope="row" className="td truncate pl-5 text-left font-medium" title={l.name}>{l.name}</th>
+                <th scope="row" className="td truncate pl-5 text-left font-medium" title={l.name}>
+                  {l.name}
+                  <GoalNote goal={goals.get(l.item.subId)} />
+                </th>
                 <td className="td py-1.5">
                   <MoneyInput value={saved.get(l.item.id) ?? l.item.budgeted} label={`${l.name} budgeted`} onLive={(v) => onLive(l.item.id, v)} onCommit={(v) => onCommit(l.item.id, v)} />
                   {l.extra > 0 && <p className="num mt-0.5 text-right text-xs font-medium text-good">+{fmt(l.extra)} extra</p>}
@@ -293,6 +311,7 @@ function GroupSection({
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{l.name}</p>
+                <GoalNote goal={goals.get(l.item.subId)} />
                 <p className="num text-xs text-muted">{pct(l.targetPct)} of income</p>
               </div>
               <div className="w-[130px]">
@@ -502,5 +521,30 @@ function ExtraIncomeCard({
         <button className="btn-ghost text-primary" onClick={onAdd}><Plus size={17} aria-hidden /> Add extra income</button>
       </div>
     </section>
+  );
+}
+
+interface GoalInfo {
+  listId: string;
+  name: string;
+  saved: number;
+  goal: number;
+  progress: number;
+}
+
+/** Under a fund line: how far along its wishlist goal is, linking to the list. */
+function GoalNote({ goal }: { goal?: GoalInfo }) {
+  if (!goal) return null;
+  return (
+    <Link
+      to={`/wishlist/${goal.listId}`}
+      className="mt-0.5 flex items-center gap-2 whitespace-normal text-xs font-normal text-muted hover:text-primary"
+      aria-label={`${goal.name} goal: ${fmt(goal.saved)} of ${fmt(goal.goal)} saved. Open the list.`}
+    >
+      <span className="h-1.5 w-10 shrink-0 overflow-hidden rounded-full bg-surface-2" aria-hidden>
+        <span className="block h-full rounded-full bg-primary" style={{ width: `${goal.progress * 100}%` }} />
+      </span>
+      <span className="num">{fmt(goal.saved)} of {fmt(goal.goal)} saved</span>
+    </Link>
   );
 }
