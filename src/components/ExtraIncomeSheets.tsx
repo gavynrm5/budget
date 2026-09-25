@@ -147,40 +147,61 @@ export function AllocateSheet({ entry, onClose }: { entry: ExtraIncome; onClose:
     subs: settings.subCategories.filter((s) => !s.archived && s.category === c).sort((a, b) => a.order - b.order)
   }));
 
+  const merge = (list: Allocation[], subId: string, amount: number): Allocation[] => {
+    const i = list.findIndex((a) => a.subId === subId);
+    if (i < 0) return [...list, { subId, amount }];
+    const next = [...list];
+    next[i] = { subId, amount: round2(next[i].amount + amount) };
+    return next;
+  };
+
   const add = (subId: string, amount: number) => {
     const v = round2(Math.min(amount, left));
-    if (v <= 0) return;
-    setAllocs((list) => {
-      const i = list.findIndex((a) => a.subId === subId);
-      if (i < 0) return [...list, { subId, amount: v }];
-      const next = [...list];
-      next[i] = { subId, amount: round2(next[i].amount + v) };
-      return next;
-    });
+    if (v > 0) setAllocs((list) => merge(list, subId, v));
+  };
+
+  /** The sub and amount picked under "Put some into". A blank amount means all that's left. */
+  const picked = (): { subId: string; amount: number } | { error: string } | null => {
+    if (!pickSub) return pickAmount.trim() ? { error: "Pick a sub-category for that amount." } : null;
+    const v = pickAmount.trim() ? parse(pickAmount) : left;
+    if (!(v > 0)) return { error: left <= 0 ? "Everything is already assigned." : "Enter an amount more than $0." };
+    if (v > left) return { error: `Only ${fmt(left)} is left to assign.` };
+    return { subId: pickSub, amount: v };
   };
 
   const addPicked = () => {
-    const v = parse(pickAmount);
-    if (!pickSub) return setErr("Pick a sub-category.");
-    if (!(v > 0)) return setErr("Enter an amount more than $0.");
-    if (v > left) return setErr(`Only ${fmt(left)} is left to assign.`);
-    add(pickSub, v);
+    const p = picked();
+    if (!p) return setErr("Pick a sub-category.");
+    if ("error" in p) return setErr(p.error);
+    add(p.subId, p.amount);
+    setPickSub("");
     setPickAmount("");
     setErr("");
   };
 
   const save = () => {
+    // Include a sub and amount that were picked but not added yet, so Save never drops them.
+    const p = picked();
+    if (p && "error" in p) return setErr(p.error);
+    const final = (p ? merge(allocs, p.subId, p.amount) : allocs).filter((a) => a.amount > 0);
+    const total = round2(sum(final.map((a) => a.amount)));
     // Make sure every sub that gets money has a line this period.
     const { lineItems } = resolveBudget(periodId, periods, settings);
-    const missing = allocs.filter((a) => !lineItems.some((li) => li.subId === a.subId));
+    const missing = final.filter((a) => !lineItems.some((li) => li.subId === a.subId));
     if (missing.length) {
       data.savePeriod(periodId, [
         ...lineItems,
         ...missing.map((a) => ({ id: data.newId(), subId: a.subId, category: settings.subCategories.find((s) => s.id === a.subId)?.category ?? "Wants", budgeted: 0 }))
       ]);
     }
-    data.saveExtraIncome({ ...entry, allocations: allocs.filter((a) => a.amount > 0) });
-    toast({ message: assigned ? `Assigned ${fmt(assigned)} of ${entry.source}` : `${entry.source} saved`, detail: left > 0 ? `${fmt(left)} left to assign later` : undefined, tone: "good" }, 3500);
+    data.saveExtraIncome({ ...entry, allocations: final });
+    const rest = round2(entry.amount - total);
+    toast(
+      total
+        ? { message: `Assigned ${fmt(total)} of ${entry.source}`, detail: rest > 0 ? `${fmt(rest)} left to assign later` : undefined, tone: "good" }
+        : { message: `Nothing assigned from ${entry.source}`, detail: "Use Cover, or pick a sub-category, then Save.", tone: "warn" },
+      4000
+    );
     onClose();
   };
 
@@ -251,7 +272,10 @@ export function AllocateSheet({ entry, onClose }: { entry: ExtraIncome; onClose:
             </button>
           </div>
           {err && <p role="alert" className="mt-1 text-sm text-bad">{err}</p>}
-          <p className="mt-1 text-xs text-muted">To add a brand new sub-category (like Fun money), create it in Settings or with Add line on the budget first.</p>
+          <p className="mt-1 text-xs text-muted">
+            Blank amount puts in everything that's left. Save includes what you picked here, so Add is only needed to split it across several.
+            For a brand new sub-category (like Fun money), create it in Settings or with Add line on the budget first.
+          </p>
         </section>
 
         <section aria-labelledby="assigned-h">
