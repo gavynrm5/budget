@@ -14,6 +14,7 @@ const Annual = lazy(() => import("./pages/Annual"));
 const Wishlist = lazy(() => import("./pages/Wishlist"));
 const Portfolio = lazy(() => import("./pages/Portfolio"));
 const Accounts = lazy(() => import("./pages/Accounts"));
+const Insights = lazy(() => import("./pages/Insights"));
 const Stock = lazy(() => import("./pages/Stock"));
 const Planning = lazy(() => import("./pages/Planning"));
 const Settings = lazy(() => import("./pages/Settings"));
@@ -50,6 +51,7 @@ function Gate() {
             <Route path="/wishlist" element={<Wishlist />} />
             <Route path="/wishlist/:listId" element={<Wishlist />} />
             <Route path="/accounts" element={<Accounts />} />
+            <Route path="/insights" element={<Insights />} />
             <Route path="/portfolio" element={<Portfolio />} />
             <Route path="/portfolio/:symbol" element={<Stock />} />
             <Route path="/planning" element={<Planning />} />

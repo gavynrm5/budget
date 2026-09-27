@@ -181,6 +181,19 @@ The **Wishlist** holds lists (folders), each with its own savings goal, like Fur
 
 Items from before lists existed were moved into a list called Furniture, with their categories, rooms and status as its dropdowns.
 
+## Spending tips (Insights)
+
+The **Insights** page (under More on a phone), with the top three tips on the Dashboard, looks at the current pay period and flags:
+
+- Lines already over budget, or on pace to go over, with a daily amount that keeps them on budget. Charges that repeat each month count once instead of being projected.
+- Categories running well above (or below) your usual by the same day in the last three periods.
+- Places you went 3 or more times this period, and charges that repeat every month at about the same amount and day.
+- How moving a little from an overspent line into a wishlist goal would reach it sooner.
+
+Fixed bills (anything named like a fixed expense in Settings) and every Savings & Debt line are left out. **Got it** hides a tip for the rest of the period.
+
+**AI-written tips (optional).** The app works out all the numbers itself. With your own Anthropic API key, Claude (`claude-opus-5`) rewrites them as friendlier, more specific advice, using only those numbers. To set it up, open Insights, tap the key icon, and paste a key from https://console.anthropic.com. Set a monthly spend limit there too. Each set of tips costs a few cents, and tips are saved and only rewritten when your spending changes, at most about twice a day, or when you tap Refresh. What gets sent: this period's facts, plus category names, store names, amounts and goal names. Account names, balances and notes are never sent. The key is stored with your data, which only you can read, and is left out of backup files. Without a key, or if Claude can't be reached, the same tips appear in plain wording.
+
 ## Extra income
 
 Money outside your paycheck, like a birthday gift or gambling winnings, goes under **Extra income** on the Period Budget. After adding it, **Assign** it: lines that are over budget are listed first with a one-tap **Cover**, and any amount can go into any sub-category. Assigned money raises what's available on that line for that pay period without changing your planned budget. Anything not assigned stays in that period to assign later.
@@ -281,6 +294,7 @@ Firestore layout, all under `users/{your uid}/`:
 - `trades/{id}` holds one buy or sale each
 - `wishLists/{id}` holds one wishlist folder with its goal and dropdowns; each `wishlist/{id}` item points to its list
 - `transfers/{id}` holds one transfer between accounts, and `extraIncome/{id}` one extra income entry with where it was assigned
+- `meta/insights` holds this period's saved tips and which ones were dismissed
 - Accounts and cards live in `meta/settings` with their nickname, last set balance, limit, and due day
 
 ## Handy commands

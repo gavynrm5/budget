@@ -37,6 +37,8 @@ export interface Settings {
   twelveDataKey: string;
   /** Bank accounts and credit cards, by nickname only. */
   accounts: Account[];
+  /** The user's own Anthropic API key for AI-written spending tips. Empty until added. */
+  anthropicKey: string;
 }
 
 export type AccountKind = "checking" | "savings" | "credit";
