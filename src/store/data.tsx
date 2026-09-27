@@ -19,6 +19,7 @@ import { toISODate } from "../lib/periods";
 import { tradesFromLegacy } from "../lib/portfolio";
 import type { ExtraIncome, LegacyHolding, LineItem, PeriodBudget, Planning, Settings, SubCategory, Trade, Transaction, Transfer, WishItem, WishList } from "../lib/types";
 import { legacyToList } from "../lib/wishlist";
+import type { InsightsCache } from "../lib/insights";
 import { useUI } from "./ui";
 
 export interface Backup {
@@ -51,6 +52,8 @@ interface DataContextValue {
   wishLists: WishList[];
   planning: Planning;
   trades: Trade[];
+  insights: InsightsCache | null;
+  saveInsights: (c: InsightsCache) => void;
   transfers: Transfer[];
   extraIncome: ExtraIncome[];
   pending: boolean;
@@ -94,6 +97,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [wishlist, setWishlist] = useState<WishItem[]>([]);
   const [wishLists, setWishLists] = useState<WishList[]>([]);
+  const [insights, setInsights] = useState<InsightsCache | null>(null);
   const wishServer = useRef({ items: false, lists: false });
   const wishMigratedRef = useRef(false);
   const [planning, setPlanning] = useState<Planning>(defaultPlanning);
@@ -181,6 +185,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
         if (!snap.metadata.fromCache) serverSeen.current.settings = true;
         markLoaded("settings");
+      }, onErr),
+      // Saved tips: not needed to show the app, so they don't count toward loading.
+      onSnapshot(base("meta", "insights"), (snap) => {
+        setInsights(snap.exists() ? (snap.data() as InsightsCache) : null);
       }, onErr),
       onSnapshot(base("meta", "planning"), opts, (snap) => {
         markPending("planning", snap.metadata.hasPendingWrites);
@@ -370,6 +378,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     (l: WishList) => fire(setDoc(base("wishLists", l.id), stripId({ ...l, createdAt: l.createdAt ?? Date.now() }))),
     [base, fire]
   );
+  const saveInsights = useCallback(
+    (c: InsightsCache) => {
+      setInsights(c);
+      fire(setDoc(base("meta", "insights"), c));
+    },
+    [base, fire]
+  );
   const deleteWishList = useCallback((id: string) => fire(deleteDoc(base("wishLists", id))), [base, fire]);
 
   const savePlanning = useCallback(
@@ -402,7 +417,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       app: "pay-period-budget",
       version: 1,
       exportedAt: new Date().toISOString(),
-      settings,
+      // API keys stay out of backup files, which may be saved anywhere.
+      settings: { ...settings, anthropicKey: "", twelveDataKey: "" },
       periods: Object.values(periods),
       transactions,
       wishlist,
@@ -427,7 +443,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (b.transfers) transfers.forEach((t) => ops.push({ ref: base("transfers", t.id) }));
       if (b.extraIncome) extraIncome.forEach((x) => ops.push({ ref: base("extraIncome", x.id) }));
       if (b.wishLists) wishLists.forEach((l) => ops.push({ ref: base("wishLists", l.id) }));
-      ops.push({ ref: base("meta", "settings"), data: { ...defaultSettings(), ...b.settings } });
+      ops.push({
+        ref: base("meta", "settings"),
+        data: {
+          ...defaultSettings(),
+          ...b.settings,
+          // Backups don't carry keys; keep the ones already set.
+          anthropicKey: b.settings.anthropicKey || settings.anthropicKey,
+          twelveDataKey: b.settings.twelveDataKey || settings.twelveDataKey
+        }
+      });
       ops.push({ ref: base("meta", "planning"), data: b.planning ?? defaultPlanning() });
       b.periods.forEach((p) => ops.push({ ref: base("periods", p.id), data: { lineItems: p.lineItems } }));
       b.transactions.forEach((t) => ops.push({ ref: base("transactions", t.id), data: stripId(t) }));
@@ -441,7 +466,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       const sets = ops.filter((o) => o.data);
       await chunkedWrite([...deletes, ...sets]);
     },
-    [transactions, wishlist, wishLists, periods, trades, transfers, extraIncome, base, chunkedWrite]
+    [transactions, wishlist, wishLists, periods, trades, transfers, extraIncome, settings.anthropicKey, settings.twelveDataKey, base, chunkedWrite]
   );
 
   const value: DataContextValue = {
@@ -458,6 +483,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     trades,
     transfers,
     extraIncome,
+    insights,
+    saveInsights,
     pending: pendingParts.size > 0,
     online,
     newId,

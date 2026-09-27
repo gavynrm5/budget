@@ -56,7 +56,8 @@ export function defaultSettings(): Settings {
     wishlistRooms: ["Living Room", "Bathroom"],
     startPeriod: "2026-03",
     twelveDataKey: "",
-    accounts: defaultAccounts()
+    accounts: defaultAccounts(),
+    anthropicKey: ""
   };
 }
 

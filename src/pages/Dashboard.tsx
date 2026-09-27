@@ -11,6 +11,7 @@ import { PeriodSwitcher } from "../components/PeriodSwitcher";
 import { PeriodRuler } from "../components/PeriodRuler";
 import { CategoryTable } from "../components/CategoryTable";
 import { Money, PageHeader, StatusBadge, SummaryCard } from "../components/ui";
+import { TipsCard } from "../components/Tips";
 
 export default function Dashboard() {
   const { settings, periods, transactions, extraIncome, transfers } = useData();
@@ -67,6 +68,8 @@ export default function Dashboard() {
         <SummaryCard label="Total Spent" value={calc.totalSpent} />
         <SummaryCard label="Left from Income" value={calc.leftFromIncome} tone={calc.leftFromIncome < 0 ? "bad" : undefined} hint={calc.extraIncome > 0 ? "Income and extra, minus spent" : "Income minus spent"} />
       </div>
+
+      {periodId === current && <TipsCard />}
 
       <section aria-labelledby="cat-h" className="mb-8">
         <h2 id="cat-h" className="mb-3 text-lg">By category</h2>

@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Settings as SettingsIcon,
   Sofa,
+  Sparkles,
   Wallet
 } from "lucide-react";
 import { useUI } from "../store/ui";
@@ -26,6 +27,7 @@ const NAV = [
   { to: "/budget", label: "Period Budget", short: "Budget", icon: ListChecks },
   { to: "/accounts", label: "Accounts", short: "Accounts", icon: Wallet },
   { to: "/portfolio", label: "Portfolio", short: "Portfolio", icon: LineChart },
+  { to: "/insights", label: "Insights", short: "Insights", icon: Sparkles },
   { to: "/annual", label: "Annual Overview", short: "Year", icon: CalendarRange },
   { to: "/wishlist", label: "Wishlist", short: "Wishlist", icon: Sofa },
   { to: "/planning", label: "Planning", short: "Planning", icon: NotebookPen },
