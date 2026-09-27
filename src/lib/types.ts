@@ -39,6 +39,8 @@ export interface Settings {
   accounts: Account[];
   /** The user's own Anthropic API key for AI-written spending tips. Empty until added. */
   anthropicKey: string;
+  /** Address of the user's bank sync worker (Cloudflare). Not a secret. Empty until set up. */
+  bankSyncUrl: string;
 }
 
 export type AccountKind = "checking" | "savings" | "credit";
@@ -62,6 +64,47 @@ export interface Account {
   creditLimit: number | null;
   /** Day of the month a card payment is due, 1 to 31. */
   dueDay: number | null;
+  /** Bank connection this account is synced from. Its balance then comes straight from the bank. */
+  linkId?: string | null;
+}
+
+/** Plaid account type, reduced to what the app needs. */
+export type BankAccountKind = AccountKind | "other";
+
+/** One bank login connected through Plaid. Only nicknames are stored, never bank or account names. */
+export interface BankLink {
+  id: string; // Plaid item id
+  label: string;
+  accounts: { plaidId: string; accountId: string | null; kind: BankAccountKind }[];
+  /** Plaid sync position; empty before the first sync. */
+  cursor: string;
+  /** Bank transactions dated before this are skipped (already logged by hand). */
+  importFrom: string;
+  lastSyncAt: number | null;
+  status: "ok" | "login-required" | "error";
+  statusMessage?: string;
+  createdAt?: number;
+}
+
+/** A transaction from the bank, waiting for review or already handled. The id is Plaid's. */
+export interface BankTx {
+  id: string;
+  linkId: string;
+  plaidAccountId: string;
+  accountId: string | null;
+  date: string;
+  amount: number; // always positive; see direction
+  direction: "out" | "in";
+  description: string;
+  pfcPrimary: string;
+  pfcDetailed: string;
+  /** What it looks like: a purchase, money coming in, or money moving between own accounts. */
+  kind: "spending" | "income" | "transfer";
+  status: "new" | "added" | "ignored" | "linked";
+  /** The transaction or extra income it became, or the one it was matched to. */
+  txId?: string;
+  removedByBank?: boolean;
+  createdAt?: number;
 }
 
 /** One budget line inside a period. Category can differ from the sub's default. */

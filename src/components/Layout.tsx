@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useUI } from "../store/ui";
 import { useData } from "../store/data";
+import { useBankSync } from "../store/bankSync";
 import { Sheet } from "./ui";
 import { Toasts } from "./Toasts";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -55,6 +56,7 @@ function SyncStatus() {
 
 export function Layout({ children }: { children: ReactNode }) {
   const { openTxSheet, txSheet, moreOpen, setMoreOpen } = useUI();
+  useBankSync(); // syncs connected banks on open, at most every few hours
   const location = useLocation();
   const navigate = useNavigate();
 

@@ -17,7 +17,8 @@ import { periodsBetween, resolveBudget } from "../lib/calc";
 import { currentPeriodId } from "../lib/periods";
 import { toISODate } from "../lib/periods";
 import { tradesFromLegacy } from "../lib/portfolio";
-import type { ExtraIncome, LegacyHolding, LineItem, PeriodBudget, Planning, Settings, SubCategory, Trade, Transaction, Transfer, WishItem, WishList } from "../lib/types";
+import type { BankLink, BankTx, ExtraIncome, LegacyHolding, LineItem, PeriodBudget, Planning, Settings, SubCategory, Trade, Transaction, Transfer, WishItem, WishList } from "../lib/types";
+import type { SyncPlan } from "../lib/bankSync";
 import { legacyToList } from "../lib/wishlist";
 import type { InsightsCache } from "../lib/insights";
 import { useUI } from "./ui";
@@ -54,6 +55,13 @@ interface DataContextValue {
   trades: Trade[];
   insights: InsightsCache | null;
   saveInsights: (c: InsightsCache) => void;
+  bankLinks: BankLink[];
+  bankTx: BankTx[];
+  saveBankLink: (l: BankLink) => void;
+  deleteBankLink: (id: string) => void;
+  saveBankTx: (t: BankTx) => void;
+  /** Saves everything one sync produced in one go. */
+  applyBankSync: (plan: SyncPlan) => Promise<void>;
   transfers: Transfer[];
   extraIncome: ExtraIncome[];
   pending: boolean;
@@ -98,6 +106,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [wishlist, setWishlist] = useState<WishItem[]>([]);
   const [wishLists, setWishLists] = useState<WishList[]>([]);
   const [insights, setInsights] = useState<InsightsCache | null>(null);
+  const [bankLinks, setBankLinks] = useState<BankLink[]>([]);
+  const [bankTx, setBankTx] = useState<BankTx[]>([]);
   const wishServer = useRef({ items: false, lists: false });
   const wishMigratedRef = useRef(false);
   const [planning, setPlanning] = useState<Planning>(defaultPlanning);
@@ -186,6 +196,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (!snap.metadata.fromCache) serverSeen.current.settings = true;
         markLoaded("settings");
       }, onErr),
+      onSnapshot(col("bankLinks"), opts, (snap) => {
+        markPending("bankLinks", snap.metadata.hasPendingWrites);
+        setBankLinks(snap.docs.map((d) => ({ ...(d.data() as Omit<BankLink, "id">), id: d.id })));
+        markLoaded("bankLinks");
+      }, onErr),
+      onSnapshot(col("bankTx"), opts, (snap) => {
+        markPending("bankTx", snap.metadata.hasPendingWrites);
+        setBankTx(snap.docs.map((d) => ({ ...(d.data() as Omit<BankTx, "id">), id: d.id })));
+        markLoaded("bankTx");
+      }, onErr),
       // Saved tips: not needed to show the app, so they don't count toward loading.
       onSnapshot(base("meta", "insights"), (snap) => {
         setInsights(snap.exists() ? (snap.data() as InsightsCache) : null);
@@ -253,7 +273,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     return () => unsubs.forEach((u) => u());
   }, [uid, base, col, fire]);
 
-  const loaded = loadedParts.size >= 9;
+  const loaded = loadedParts.size >= 11;
 
   // Roll periods forward: once server data is known, save a budget for every
   // period from the last saved one through the current period, each copied
@@ -364,6 +384,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [fire]
   );
 
+  const applyBankSync = useCallback(
+    async (plan: SyncPlan) => {
+      const ops: { ref: DocumentReference; data?: object }[] = [
+        ...plan.deletes.map((id) => ({ ref: base("bankTx", id) })),
+        ...plan.upserts.map((t) => ({ ref: base("bankTx", t.id), data: stripId(t) })),
+        { ref: base("bankLinks", plan.link.id), data: stripId(plan.link) }
+      ];
+      await chunkedWrite(ops);
+      updateSettings({ accounts: plan.accounts });
+    },
+    [base, chunkedWrite, updateSettings]
+  );
+
   const addTransactions = useCallback(
     async (txs: Transaction[], newSubs: SubCategory[]) => {
       if (newSubs.length) updateSettings({ subCategories: [...settings.subCategories, ...newSubs] });
@@ -378,6 +411,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     (l: WishList) => fire(setDoc(base("wishLists", l.id), stripId({ ...l, createdAt: l.createdAt ?? Date.now() }))),
     [base, fire]
   );
+  const saveBankLink = useCallback((l: BankLink) => fire(setDoc(base("bankLinks", l.id), stripId({ ...l, createdAt: l.createdAt ?? Date.now() }))), [base, fire]);
+  const deleteBankLink = useCallback((id: string) => fire(deleteDoc(base("bankLinks", id))), [base, fire]);
+  const saveBankTx = useCallback((t: BankTx) => fire(setDoc(base("bankTx", t.id), stripId(t))), [base, fire]);
+
   const saveInsights = useCallback(
     (c: InsightsCache) => {
       setInsights(c);
@@ -485,6 +522,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     extraIncome,
     insights,
     saveInsights,
+    bankLinks,
+    bankTx,
+    saveBankLink,
+    deleteBankLink,
+    saveBankTx,
+    applyBankSync,
     pending: pendingParts.size > 0,
     online,
     newId,
