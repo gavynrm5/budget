@@ -73,6 +73,11 @@ export function accountEntries(
 export function computeBalances(accounts: Account[], txs: Transaction[], transfers: Transfer[], extras: ExtraIncome[]): Record<string, number> {
   const out: Record<string, number> = {};
   for (const a of accounts) {
+    // Bank-synced accounts take the bank's own balance, which already includes everything.
+    if (a.linkId) {
+      out[a.id] = round2(a.balance);
+      continue;
+    }
     const entries = accountEntries(a, txs, transfers, extras, () => "", () => "");
     out[a.id] = round2(a.balance + entries.filter((e) => e.counted).reduce((s, e) => s + e.delta, 0));
   }

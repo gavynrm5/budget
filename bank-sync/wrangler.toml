@@ -1,0 +1,20 @@
+# Bank sync worker for Pay Period Budget. See README "Bank sync" for setup.
+name = "budget-bank-sync"
+main = "src/index.ts"
+compatibility_date = "2026-09-01"
+
+[vars]
+PLAID_ENV = "production"
+FIREBASE_PROJECT_ID = "my-budget-ff7ca"
+OWNER_UID = "jytsSo65ldYb3lazlNa8pwXUpJ73"
+ALLOWED_ORIGINS = "https://gavynrm5.github.io,http://localhost:5173"
+
+# Created with: npx wrangler kv namespace create TOKENS  (then paste the id here)
+[[kv_namespaces]]
+binding = "TOKENS"
+id = "REPLACE_WITH_KV_ID"
+
+# Secrets (never in this file): PLAID_CLIENT_ID, PLAID_SECRET, TOKEN_KEY
+#   npx wrangler secret put PLAID_CLIENT_ID
+#   npx wrangler secret put PLAID_SECRET
+#   openssl rand -base64 32 | npx wrangler secret put TOKEN_KEY

@@ -57,7 +57,8 @@ export function defaultSettings(): Settings {
     startPeriod: "2026-03",
     twelveDataKey: "",
     accounts: defaultAccounts(),
-    anthropicKey: ""
+    anthropicKey: "",
+    bankSyncUrl: ""
   };
 }
 
