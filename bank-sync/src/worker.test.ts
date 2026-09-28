@@ -75,6 +75,13 @@ describe("token storage", () => {
 });
 
 describe("who can call it", () => {
+  it("refuses requests that arrived over TLS 1.0 or 1.1", async () => {
+    mockFetch({});
+    const r = await req("/link-token", {});
+    Object.defineProperty(r, "cf", { value: { tlsVersion: "TLSv1.1" } });
+    expect((await worker.fetch(r, env(kv().ns))).status).toBe(426);
+  });
+
   it("rejects other websites before doing anything", async () => {
     mockFetch({});
     const r = await worker.fetch(await req("/sync", {}, { origin: "https://evil.example" }), env(kv().ns));
