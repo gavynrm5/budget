@@ -181,6 +181,12 @@ The **Wishlist** holds lists (folders), each with its own savings goal, like Fur
 
 Items from before lists existed were moved into a list called Furniture, with their categories, rooms and status as its dropdowns.
 
+## Wrap-up, net worth, and search
+
+- **Wrap-up:** when a pay period ends, the Dashboard offers its recap for the first three weeks of the next one. It shows what's left over (income and extra income minus everything spent, including savings), planned vs. spent by group, what went over or stayed under, the biggest spending, everyday spending compared with the period before, goal contributions, and the change in net worth. **Put it to work** moves leftover into a wishlist goal or savings line (recorded as a savings entry on the period's last day) or carries it into the next period as extra income. Any past period's wrap-up is linked from its Period Budget.
+- **Net worth:** on the Accounts page, cash in bank accounts minus card balances plus stocks (at the latest price loaded on Portfolio, or what was paid if none). One point is saved each day for the history chart, starting once a balance is set.
+- **Search:** find any transaction by store, note, sub-category, or amount across every pay period, with totals, an average, and a per-period chart. Filter by date range, group, or card.
+
 ## Bank sync (Plaid)
 
 Connected banks send new purchases and current balances to the app about once a day. It's **read-only**: the app can see transactions and balances but can never move money. New transactions wait on the **Review** screen with a suggested category (from what you picked before at the same place, else the bank's category), and anything you already logged by hand is spotted so it isn't counted twice. Paychecks and card payments are kept out of spending. Connected accounts take their balance straight from the bank.
@@ -320,6 +326,7 @@ Firestore layout, all under `users/{your uid}/`:
 - `wishLists/{id}` holds one wishlist folder with its goal and dropdowns; each `wishlist/{id}` item points to its list
 - `transfers/{id}` holds one transfer between accounts, and `extraIncome/{id}` one extra income entry with where it was assigned
 - `bankLinks/{itemId}` holds each bank connection's nickname, account matches and sync position (no bank names or numbers); `bankTx/{id}` holds bank transactions waiting for review or already handled
+- `netWorth/{YYYY-MM-DD}` holds each day's net worth; `wrapUps/{YYYY-MM}` records leftover moves and when a period was wrapped up
 - `meta/insights` holds this period's saved tips and which ones were dismissed
 - Accounts and cards live in `meta/settings` with their nickname, last set balance, limit, and due day
 

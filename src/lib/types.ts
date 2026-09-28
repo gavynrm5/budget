@@ -245,3 +245,22 @@ export interface LegacyHolding {
   notes: string;
   createdAt?: number;
 }
+
+/** Net worth on one day. The id is the local date, YYYY-MM-DD. */
+export interface NetWorthPoint {
+  id: string;
+  cash: number;
+  owed: number;
+  investments: number;
+  total: number;
+  /** True when stock prices weren't available and holdings count at what was paid. */
+  investmentsEstimated: boolean;
+}
+
+/** What happened when a pay period was wrapped up. The id is the period, YYYY-MM. */
+export interface WrapUp {
+  id: string;
+  /** Leftover moved out: to a savings sub (a Savings transaction) or carried into the next period (extra income). */
+  moves: { kind: "savings" | "carry"; subId?: string; amount: number; refId: string; at: number }[];
+  completedAt: number | null;
+}

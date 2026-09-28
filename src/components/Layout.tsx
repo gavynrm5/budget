@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   NotebookPen,
   Plus,
+  Search,
   RefreshCw,
   Settings as SettingsIcon,
   Sofa,
@@ -18,6 +19,7 @@ import {
 import { useUI } from "../store/ui";
 import { useData } from "../store/data";
 import { useBankSync } from "../store/bankSync";
+import { useNetWorthSnapshot } from "../store/netWorth";
 import { Sheet } from "./ui";
 import { Toasts } from "./Toasts";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -29,6 +31,7 @@ const NAV = [
   { to: "/accounts", label: "Accounts", short: "Accounts", icon: Wallet },
   { to: "/portfolio", label: "Portfolio", short: "Portfolio", icon: LineChart },
   { to: "/insights", label: "Insights", short: "Insights", icon: Sparkles },
+  { to: "/search", label: "Search", short: "Search", icon: Search },
   { to: "/annual", label: "Annual Overview", short: "Year", icon: CalendarRange },
   { to: "/wishlist", label: "Wishlist", short: "Wishlist", icon: Sofa },
   { to: "/planning", label: "Planning", short: "Planning", icon: NotebookPen },
@@ -57,6 +60,7 @@ function SyncStatus() {
 export function Layout({ children }: { children: ReactNode }) {
   const { openTxSheet, txSheet, moreOpen, setMoreOpen } = useUI();
   useBankSync(); // syncs connected banks on open, at most every few hours
+  useNetWorthSnapshot(); // one net worth point a day for the history chart
   const location = useLocation();
   const navigate = useNavigate();
 

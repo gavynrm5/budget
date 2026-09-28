@@ -8,7 +8,8 @@ import { ACCOUNT_KIND_LABEL, type Account, type Transfer } from "../lib/types";
 import { ACCOUNT_ICON } from "../components/AccountPicker";
 import { AccountSheet, SetBalanceSheet, TransferSheet } from "../components/AccountSheets";
 import { BankSyncCard } from "../components/BankSync";
-import { Money, PageHeader, SummaryCard } from "../components/ui";
+import { NetWorthCard } from "../components/NetWorthCard";
+import { Money, PageHeader } from "../components/ui";
 
 type Sheet =
   | { kind: "balance"; account: Account }
@@ -25,8 +26,6 @@ export default function Accounts() {
   const banks = active.filter((a) => !isCredit(a));
   const cards = active.filter(isCredit);
   const archived = settings.accounts.filter((a) => a.archived);
-  const cash = banks.reduce((s, a) => s + balances[a.id], 0);
-  const owed = cards.reduce((s, a) => s + balances[a.id], 0);
   const recentTransfers = useMemo(() => [...transfers].sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt ?? 0) - (a.createdAt ?? 0)).slice(0, 10), [transfers]);
   const nameOf = (id: string) => {
     const a = settings.accounts.find((x) => x.id === id);
@@ -50,13 +49,7 @@ export default function Accounts() {
         }
       />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-3">
-        <SummaryCard label="Cash" value={cash} hint="Checking and savings" />
-        <SummaryCard label="Card balances" value={owed} hint="What you owe" />
-        <div className="col-span-2 lg:col-span-1">
-          <SummaryCard label="Net" value={cash - owed} hint="Cash minus card balances" tone={cash - owed < 0 ? "bad" : undefined} />
-        </div>
-      </div>
+      <NetWorthCard />
 
       <BankSyncCard />
 
