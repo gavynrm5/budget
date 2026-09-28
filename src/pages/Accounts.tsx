@@ -7,7 +7,6 @@ import { accountEntries, accountLabel, activeAccounts, computeBalances, isCredit
 import { ACCOUNT_KIND_LABEL, type Account, type Transfer } from "../lib/types";
 import { ACCOUNT_ICON } from "../components/AccountPicker";
 import { AccountSheet, SetBalanceSheet, TransferSheet } from "../components/AccountSheets";
-import { BankSyncCard } from "../components/BankSync";
 import { NetWorthCard } from "../components/NetWorthCard";
 import { Money, PageHeader } from "../components/ui";
 
@@ -50,8 +49,6 @@ export default function Accounts() {
       />
 
       <NetWorthCard />
-
-      <BankSyncCard />
 
       <section aria-labelledby="banks-h" className="mb-6">
         <h2 id="banks-h" className="mb-3 text-lg">Bank accounts</h2>
@@ -166,11 +163,7 @@ function AccountCard({ account, balance, onSet, onEdit, onPay }: { account: Acco
       <p className="mt-3 text-xs text-muted">{credit ? "Balance owed" : "Balance"}</p>
       <p className="num text-2xl font-semibold"><Money value={balance} colorNegative={!credit} /></p>
       <p className="text-xs text-muted">
-        {account.linkId
-          ? `From your bank, ${new Date(account.balanceSetAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`
-          : account.balanceSetAt
-            ? `Set ${formatDate(toISODate(new Date(account.balanceSetAt)))}, updated from what you log since`
-            : "Not set yet. Tap Set balance."}
+        {account.balanceSetAt ? `Set ${formatDate(toISODate(new Date(account.balanceSetAt)))}, updated from what you log since` : "Not set yet. Tap Set balance."}
       </p>
 
       {credit && (use != null || due) && (
@@ -195,7 +188,7 @@ function AccountCard({ account, balance, onSet, onEdit, onPay }: { account: Acco
       )}
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {!account.linkId && <button className="btn-outline min-h-[40px] px-3 text-sm" onClick={onSet}>Set balance</button>}
+        <button className="btn-outline min-h-[40px] px-3 text-sm" onClick={onSet}>Set balance</button>
         {onPay && <button className="btn-outline min-h-[40px] px-3 text-sm" onClick={onPay}>Pay card</button>}
         <button className="btn-ghost min-h-[40px] px-3 text-sm" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
           Activity <ChevronDown size={15} aria-hidden className={open ? "rotate-180" : ""} />

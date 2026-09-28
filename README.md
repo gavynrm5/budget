@@ -187,31 +187,6 @@ Items from before lists existed were moved into a list called Furniture, with th
 - **Net worth:** on the Accounts page, cash in bank accounts minus card balances plus stocks (at the latest price loaded on Portfolio, or what was paid if none). One point is saved each day for the history chart, starting once a balance is set.
 - **Search:** find any transaction by store, note, sub-category, or amount across every pay period, with totals, an average, and a per-period chart. Filter by date range, group, or card.
 
-## Bank sync (Plaid)
-
-Connected banks send new purchases and current balances to the app about once a day. It's **read-only**: the app can see transactions and balances but can never move money. New transactions wait on the **Review** screen with a suggested category (from what you picked before at the same place, else the bank's category), and anything you already logged by hand is spotted so it isn't counted twice. Paychecks and card payments are kept out of spending. Connected accounts take their balance straight from the bank.
-
-It uses a small free **Cloudflare Worker** (in `bank-sync/`) that holds your Plaid secret and each bank's access token, encrypted, so neither is ever in the app or this repo. The worker only answers requests signed in as the owner (the UID in `bank-sync/wrangler.toml`) from this site's address.
-
-**One-time setup:**
-
-1. **Plaid:** create a free account at https://dashboard.plaid.com (the free plan allows 10 bank connections). Under **Developers > Keys**, note your `client_id` and **Production** secret. If Plaid asks you to finish an application profile before connecting real banks, complete it.
-2. **Cloudflare:** create a free account at https://dash.cloudflare.com.
-3. In a terminal:
-   ```bash
-   cd bank-sync
-   npm install
-   npx wrangler login
-   npx wrangler kv namespace create TOKENS      # copy the id it prints into wrangler.toml
-   npx wrangler secret put PLAID_CLIENT_ID      # paste your client_id
-   npx wrangler secret put PLAID_SECRET         # paste your Production secret
-   openssl rand -base64 32 | npx wrangler secret put TOKEN_KEY
-   npx wrangler deploy                          # prints https://budget-bank-sync.<you>.workers.dev
-   ```
-4. In the app: **Accounts > Bank sync**, paste the worker address, then **Connect a bank**. Match each bank account to one of your accounts (or add a new one), and choose how far back to bring in transactions.
-
-If the site's address ever changes, update `ALLOWED_ORIGINS` in `bank-sync/wrangler.toml` and deploy again. **Disconnect** removes a connection at Plaid and deletes its token.
-
 ## Spending tips (Insights)
 
 The **Insights** page (under More on a phone), with the top three tips on the Dashboard, looks at the current pay period and flags:
@@ -325,7 +300,6 @@ Firestore layout, all under `users/{your uid}/`:
 - `trades/{id}` holds one buy or sale each
 - `wishLists/{id}` holds one wishlist folder with its goal and dropdowns; each `wishlist/{id}` item points to its list
 - `transfers/{id}` holds one transfer between accounts, and `extraIncome/{id}` one extra income entry with where it was assigned
-- `bankLinks/{itemId}` holds each bank connection's nickname, account matches and sync position (no bank names or numbers); `bankTx/{id}` holds bank transactions waiting for review or already handled
 - `netWorth/{YYYY-MM-DD}` holds each day's net worth; `wrapUps/{YYYY-MM}` records leftover moves and when a period was wrapped up
 - `meta/insights` holds this period's saved tips and which ones were dismissed
 - Accounts and cards live in `meta/settings` with their nickname, last set balance, limit, and due day
