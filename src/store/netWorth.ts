@@ -27,7 +27,7 @@ export function useNetWorthSnapshot() {
   const today = useNetWorthToday();
   const lastWrite = useRef(0);
   const saved = netWorth.find((p) => p.id === today.id);
-  const started = settings.accounts.some((a) => a.balanceSetAt > 0 || a.linkId) || trades.length > 0;
+  const started = settings.accounts.some((a) => a.balanceSetAt > 0) || trades.length > 0;
 
   useEffect(() => {
     if (!loaded || !started) return;

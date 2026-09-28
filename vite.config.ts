@@ -2,7 +2,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
-import { configDefaults } from "vitest/config";
 
 // base "./" makes the build work on GitHub Pages (project sub-path) and on
 // Cloudflare Pages (root) without any changes. Routing uses URL hashes (#/budget).
@@ -45,6 +44,5 @@ export default defineConfig({
       }
     }
   },
-  // The bank sync worker has its own package and tests (bank-sync/).
-  test: { environment: "node", exclude: [...configDefaults.exclude, "bank-sync/**"] }
+  test: { environment: "node" }
 });

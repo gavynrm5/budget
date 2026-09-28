@@ -14,8 +14,7 @@ import { Money, PageHeader, StatusBadge, SummaryCard } from "../components/ui";
 import { TipsCard } from "../components/Tips";
 
 export default function Dashboard() {
-  const { settings, periods, transactions, extraIncome, transfers, bankTx, wrapUps } = useData();
-  const toReview = bankTx.filter((t) => t.status === "new").length;
+  const { settings, periods, transactions, extraIncome, transfers, wrapUps } = useData();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const raw = params.get("p");
@@ -65,11 +64,6 @@ export default function Dashboard() {
         );
       })()}
 
-      {toReview > 0 && (
-        <Link to="/review" className="mb-4 flex items-center justify-between rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3 text-sm font-medium text-primary hover:bg-primary/15">
-          {toReview} new bank {toReview === 1 ? "transaction" : "transactions"} to review <span aria-hidden>→</span>
-        </Link>
-      )}
 
       {dueSoon.length > 0 && (
         <section aria-label="Card payments due soon" className="mb-4 rounded-2xl border border-warn/40 bg-warn/10 px-4 py-3">
