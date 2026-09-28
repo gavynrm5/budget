@@ -13,7 +13,7 @@ const DEFAULT_SUBS: Record<Category, [string, string][]> = {
     ["dining", "Restaurants & Dining Out"],
     ["subscriptions", "Entertainment & Subscriptions"],
     ["travel-shopping", "Travel & Shopping"],
-    ["vape", "Vape / Tobacco"],
+    ["habits", "Personal Habits"],
     ["personal-care", "Personal Care"],
     ["misc-wants", "Misc / Other Wants"]
   ],
