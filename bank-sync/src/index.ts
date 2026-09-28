@@ -51,6 +51,9 @@ const publicAccounts = (list: PlaidAccount[]) =>
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Refuse outdated TLS (1.0/1.1). Cloudflare reports the version each request arrived on.
+    const tls = (request as Request & { cf?: { tlsVersion?: string } }).cf?.tlsVersion;
+    if (tls === "TLSv1" || tls === "TLSv1.1") return new Response("TLS 1.2 or newer is required.", { status: 426 });
     const cors = corsFor(request, env);
     if (!cors) return new Response("Forbidden", { status: 403 });
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
