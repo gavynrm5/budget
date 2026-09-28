@@ -89,6 +89,7 @@ export default function PeriodBudget() {
     <>
       <PageHeader
         title="Period Budget"
+        subtitle={periodId < currentPeriodId() ? <Link to={`/wrapup/${periodId}`} className="text-sm font-medium text-primary hover:underline">See the {periodName(periodId)} wrap-up →</Link> : undefined}
         actions={<PeriodSwitcher periodId={periodId} onChange={(id) => navigate(`/budget/${id}`, { replace: true })} />}
       />
 

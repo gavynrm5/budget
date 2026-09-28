@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { CalendarClock, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useData } from "../store/data";
-import { computePeriod } from "../lib/calc";
-import { currentPeriodId, formatDate, isValidPeriodId, parseISO, periodName, periodRangeLabel, periodsForYear, todayISO } from "../lib/periods";
+import { computePeriod, txPeriod } from "../lib/calc";
+import { currentPeriodId, dayOfPeriod, formatDate, isValidPeriodId, parseISO, periodName, periodRangeLabel, periodsForYear, shiftPeriod, todayISO } from "../lib/periods";
 import { accountLabel, activeAccounts, computeBalances, nextDue } from "../lib/accounts";
 import { fmt, pct } from "../lib/money";
 import { PeriodSwitcher } from "../components/PeriodSwitcher";
@@ -14,7 +14,7 @@ import { Money, PageHeader, StatusBadge, SummaryCard } from "../components/ui";
 import { TipsCard } from "../components/Tips";
 
 export default function Dashboard() {
-  const { settings, periods, transactions, extraIncome, transfers, bankTx } = useData();
+  const { settings, periods, transactions, extraIncome, transfers, bankTx, wrapUps } = useData();
   const toReview = bankTx.filter((t) => t.status === "new").length;
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -44,6 +44,26 @@ export default function Dashboard() {
   return (
     <>
       <PageHeader title="Dashboard" actions={<PeriodSwitcher periodId={periodId} onChange={setPeriod} />} />
+
+      {(() => {
+        // Last period's recap, offered for the first 3 weeks of the new one until it's marked done.
+        const prev = shiftPeriod(current, -1);
+        const ready =
+          periodId === current &&
+          prev >= settings.startPeriod &&
+          transactions.some((t) => txPeriod(t) === prev) &&
+          !wrapUps.find((w) => w.id === prev)?.completedAt &&
+          dayOfPeriod(current, todayISO()) <= 21;
+        if (!ready) return null;
+        const c = computePeriod(prev, periods, transactions, settings, extraIncome);
+        const left = c.income + c.extraIncome - c.totalSpent;
+        return (
+          <Link to={`/wrapup/${prev}`} className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-good/40 bg-good/10 px-4 py-3 text-sm hover:bg-good/15">
+            <span><strong>Your {periodName(prev)} wrap-up is ready.</strong> {left >= 0 ? `${fmt(left)} left over to put to work.` : `Spent ${fmt(-left)} more than came in.`}</span>
+            <span aria-hidden className="font-medium">→</span>
+          </Link>
+        );
+      })()}
 
       {toReview > 0 && (
         <Link to="/review" className="mb-4 flex items-center justify-between rounded-2xl border border-primary/30 bg-primary/10 px-4 py-3 text-sm font-medium text-primary hover:bg-primary/15">

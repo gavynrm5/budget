@@ -17,7 +17,7 @@ import { periodsBetween, resolveBudget } from "../lib/calc";
 import { currentPeriodId } from "../lib/periods";
 import { toISODate } from "../lib/periods";
 import { tradesFromLegacy } from "../lib/portfolio";
-import type { BankLink, BankTx, ExtraIncome, LegacyHolding, LineItem, PeriodBudget, Planning, Settings, SubCategory, Trade, Transaction, Transfer, WishItem, WishList } from "../lib/types";
+import type { BankLink, BankTx, ExtraIncome, LegacyHolding, NetWorthPoint, WrapUp, LineItem, PeriodBudget, Planning, Settings, SubCategory, Trade, Transaction, Transfer, WishItem, WishList } from "../lib/types";
 import type { SyncPlan } from "../lib/bankSync";
 import { legacyToList } from "../lib/wishlist";
 import type { InsightsCache } from "../lib/insights";
@@ -62,6 +62,10 @@ interface DataContextValue {
   saveBankTx: (t: BankTx) => void;
   /** Saves everything one sync produced in one go. */
   applyBankSync: (plan: SyncPlan) => Promise<void>;
+  netWorth: NetWorthPoint[];
+  saveNetWorth: (p: NetWorthPoint) => void;
+  wrapUps: WrapUp[];
+  saveWrapUp: (w: WrapUp) => void;
   transfers: Transfer[];
   extraIncome: ExtraIncome[];
   pending: boolean;
@@ -108,6 +112,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [insights, setInsights] = useState<InsightsCache | null>(null);
   const [bankLinks, setBankLinks] = useState<BankLink[]>([]);
   const [bankTx, setBankTx] = useState<BankTx[]>([]);
+  const [netWorth, setNetWorth] = useState<NetWorthPoint[]>([]);
+  const [wrapUps, setWrapUps] = useState<WrapUp[]>([]);
   const wishServer = useRef({ items: false, lists: false });
   const wishMigratedRef = useRef(false);
   const [planning, setPlanning] = useState<Planning>(defaultPlanning);
@@ -205,6 +211,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
         markPending("bankTx", snap.metadata.hasPendingWrites);
         setBankTx(snap.docs.map((d) => ({ ...(d.data() as Omit<BankTx, "id">), id: d.id })));
         markLoaded("bankTx");
+      }, onErr),
+      // History and recaps: not needed to show the app, so they don't count toward loading.
+      onSnapshot(col("netWorth"), (snap) => {
+        setNetWorth(snap.docs.map((d) => ({ ...(d.data() as Omit<NetWorthPoint, "id">), id: d.id })).sort((a, b) => a.id.localeCompare(b.id)));
+      }, onErr),
+      onSnapshot(col("wrapUps"), (snap) => {
+        setWrapUps(snap.docs.map((d) => {
+          const w = d.data() as Omit<WrapUp, "id">;
+          return { ...w, moves: w.moves ?? [], id: d.id };
+        }));
       }, onErr),
       // Saved tips: not needed to show the app, so they don't count toward loading.
       onSnapshot(base("meta", "insights"), (snap) => {
@@ -411,6 +427,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     (l: WishList) => fire(setDoc(base("wishLists", l.id), stripId({ ...l, createdAt: l.createdAt ?? Date.now() }))),
     [base, fire]
   );
+  const saveNetWorth = useCallback((p: NetWorthPoint) => fire(setDoc(base("netWorth", p.id), stripId(p))), [base, fire]);
+  const saveWrapUp = useCallback((w: WrapUp) => fire(setDoc(base("wrapUps", w.id), stripId(w))), [base, fire]);
   const saveBankLink = useCallback((l: BankLink) => fire(setDoc(base("bankLinks", l.id), stripId({ ...l, createdAt: l.createdAt ?? Date.now() }))), [base, fire]);
   const deleteBankLink = useCallback((id: string) => fire(deleteDoc(base("bankLinks", id))), [base, fire]);
   const saveBankTx = useCallback((t: BankTx) => fire(setDoc(base("bankTx", t.id), stripId(t))), [base, fire]);
@@ -528,6 +546,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deleteBankLink,
     saveBankTx,
     applyBankSync,
+    netWorth,
+    saveNetWorth,
+    wrapUps,
+    saveWrapUp,
     pending: pendingParts.size > 0,
     online,
     newId,
