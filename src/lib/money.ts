@@ -1,7 +1,9 @@
 /** Round to 2 decimals in a way that avoids 1.005 style float errors. */
 export function round2(n: number): number {
   if (!isFinite(n)) return 0;
-  return Math.round((n + Math.sign(n) * Number.EPSILON) * 100) / 100;
+  // The tiny nudge fixes values like 1.005 or 1000.005 that sit just under the half cent in binary.
+  const r = Math.round((Math.abs(n) + 1e-9) * 100) / 100;
+  return n < 0 && r !== 0 ? -r : r;
 }
 
 export function sum(values: number[]): number {

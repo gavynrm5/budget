@@ -14,8 +14,8 @@ import {
 import { auth, db } from "../lib/firebase";
 import { defaultPlanning, defaultSettings } from "../lib/defaults";
 import { periodsBetween, resolveBudget } from "../lib/calc";
-import { currentPeriodId } from "../lib/periods";
-import { toISODate } from "../lib/periods";
+import { currentPeriodId, toISODate } from "../lib/periods";
+import { chunkWrites, restoredSettings } from "../lib/backup";
 import { tradesFromLegacy } from "../lib/portfolio";
 import type { ExtraIncome, LegacyHolding, NetWorthPoint, WrapUp, LineItem, PeriodBudget, Planning, Settings, SubCategory, Trade, Transaction, Transfer, WishItem, WishList } from "../lib/types";
 import { legacyToList } from "../lib/wishlist";
@@ -38,6 +38,8 @@ export interface Backup {
   transfers?: Transfer[];
   extraIncome?: ExtraIncome[];
   wishLists?: WishList[];
+  netWorth?: NetWorthPoint[];
+  wrapUps?: WrapUp[];
 }
 
 interface DataContextValue {
@@ -174,8 +176,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (v) n.add(k); else n.delete(k);
         return n;
       });
-    const onErr = (err: { code?: string }) => {
-      if (err.code === "permission-denied") setDenied(true);
+    let warned = false;
+    const onErr = (err: { code?: string; message?: string }) => {
+      if (err.code === "permission-denied") return setDenied(true);
+      if (warned) return;
+      warned = true;
+      toast({ message: "Could not load your data", detail: err.message ?? "Check your connection and reload.", tone: "bad" }, 8000);
     };
     const opts = { includeMetadataChanges: true };
     const unsubs = [
@@ -267,7 +273,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }, onErr)
     ];
     return () => unsubs.forEach((u) => u());
-  }, [uid, base, col, fire]);
+  }, [uid, base, col, fire, toast]);
 
   const loaded = loadedParts.size >= 9;
 
@@ -371,9 +377,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const chunkedWrite = useCallback(
     async (ops: { ref: DocumentReference; data?: object }[]) => {
       if (!db) return;
-      for (let i = 0; i < ops.length; i += 400) {
+      for (const chunk of chunkWrites(ops)) {
         const batch = writeBatch(db);
-        ops.slice(i, i + 400).forEach((o) => (o.data ? batch.set(o.ref, o.data) : batch.delete(o.ref)));
+        chunk.forEach((o) => (o.data ? batch.set(o.ref, o.data) : batch.delete(o.ref)));
         fire(batch.commit());
       }
     },
@@ -445,9 +451,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       planning,
       trades,
       transfers,
-      extraIncome
+      extraIncome,
+      netWorth,
+      wrapUps
     }),
-    [settings, periods, transactions, wishlist, wishLists, planning, trades, transfers, extraIncome]
+    [settings, periods, transactions, wishlist, wishLists, planning, trades, transfers, extraIncome, netWorth, wrapUps]
   );
 
   const replaceAll = useCallback(
@@ -461,31 +469,33 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (restored) trades.forEach((t) => ops.push({ ref: base("trades", t.id) }));
       if (b.transfers) transfers.forEach((t) => ops.push({ ref: base("transfers", t.id) }));
       if (b.extraIncome) extraIncome.forEach((x) => ops.push({ ref: base("extraIncome", x.id) }));
-      if (b.wishLists) wishLists.forEach((l) => ops.push({ ref: base("wishLists", l.id) }));
-      ops.push({
-        ref: base("meta", "settings"),
-        data: {
-          ...defaultSettings(),
-          ...b.settings,
-          // Backups don't carry keys; keep the ones already set.
-          anthropicKey: b.settings.anthropicKey || settings.anthropicKey,
-          twelveDataKey: b.settings.twelveDataKey || settings.twelveDataKey
-        }
-      });
+      // Backups from before lists existed: put their items in a list, or they'd be saved but never shown.
+      const legacy = b.wishLists ? null : legacyToList({ ...defaultSettings(), ...b.settings }, b.wishlist.filter((w) => !w.listId));
+      const loose = legacy && (legacy.items.length || b.settings.wishlistSaved) ? legacy : null;
+      const restoredSubs = loose && !(b.settings.subCategories ?? []).some((x) => x.id === loose.sub.id) ? [...(b.settings.subCategories ?? defaultSettings().subCategories), loose.sub] : null;
+      const lists = b.wishLists ?? (loose ? [loose.list] : []);
+      const items = loose ? [...b.wishlist.filter((w) => w.listId), ...loose.items] : b.wishlist;
+      wishLists.forEach((l) => ops.push({ ref: base("wishLists", l.id) }));
+      if (b.netWorth) netWorth.forEach((p) => ops.push({ ref: base("netWorth", p.id) }));
+      // Wrap-ups point at entries that are being replaced, so they never outlive a restore.
+      wrapUps.forEach((w) => ops.push({ ref: base("wrapUps", w.id) }));
+      ops.push({ ref: base("meta", "settings"), data: { ...restoredSettings(b.settings, settings), ...(restoredSubs ? { subCategories: restoredSubs } : {}) } });
       ops.push({ ref: base("meta", "planning"), data: b.planning ?? defaultPlanning() });
       b.periods.forEach((p) => ops.push({ ref: base("periods", p.id), data: { lineItems: p.lineItems } }));
       b.transactions.forEach((t) => ops.push({ ref: base("transactions", t.id), data: stripId(t) }));
-      b.wishlist.forEach((w) => ops.push({ ref: base("wishlist", w.id), data: stripId(w) }));
+      items.forEach((w) => ops.push({ ref: base("wishlist", w.id), data: stripId(w) }));
       restored?.forEach((t) => ops.push({ ref: base("trades", t.id), data: stripId(t) }));
       b.transfers?.forEach((t) => ops.push({ ref: base("transfers", t.id), data: stripId(t) }));
       b.extraIncome?.forEach((x) => ops.push({ ref: base("extraIncome", x.id), data: stripId(x) }));
-      b.wishLists?.forEach((l) => ops.push({ ref: base("wishLists", l.id), data: stripId(l) }));
+      lists.forEach((l) => ops.push({ ref: base("wishLists", l.id), data: stripId(l) }));
+      b.netWorth?.forEach((p) => ops.push({ ref: base("netWorth", p.id), data: stripId(p) }));
+      b.wrapUps?.forEach((w) => ops.push({ ref: base("wrapUps", w.id), data: stripId(w) }));
       // Deletes first, then sets, so a restored doc with the same id survives.
       const deletes = ops.filter((o) => !o.data);
       const sets = ops.filter((o) => o.data);
       await chunkedWrite([...deletes, ...sets]);
     },
-    [transactions, wishlist, wishLists, periods, trades, transfers, extraIncome, settings.anthropicKey, settings.twelveDataKey, base, chunkedWrite]
+    [transactions, wishlist, wishLists, periods, trades, transfers, extraIncome, netWorth, wrapUps, settings, base, chunkedWrite]
   );
 
   const value: DataContextValue = {

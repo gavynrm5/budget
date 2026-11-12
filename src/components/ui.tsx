@@ -64,6 +64,9 @@ export function EmptyState({ icon, title, children }: { icon: ReactNode; title: 
   );
 }
 
+// Open sheets, bottom to top. Only the top one handles Escape and Tab.
+const openSheets: object[] = [];
+
 /** Bottom sheet on phones, centered dialog on larger screens. */
 export function Sheet({
   title,
@@ -79,13 +82,22 @@ export function Sheet({
   wide?: boolean;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  // onClose is often a new function on every render of the parent. Keeping it in a
+  // ref lets this effect run once, so focus isn't pulled back to the first field
+  // whenever something re-renders (a sync, a toast timing out) while typing.
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
+    const token = {};
+    openSheets.push(token);
+    const isTop = () => openSheets[openSheets.length - 1] === token;
     const prev = document.activeElement as HTMLElement | null;
     const el = ref.current;
     const first = el?.querySelector<HTMLElement>("[data-autofocus]") ?? el?.querySelector<HTMLElement>("input,select,textarea,button");
     first?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (!isTop()) return;
+      if (e.key === "Escape") close.current();
       if (e.key === "Tab" && el) {
         const f = [...el.querySelectorAll<HTMLElement>("button,input,select,textarea,a[href],[tabindex]:not([tabindex='-1'])")].filter((n) => !n.hasAttribute("disabled"));
         if (!f.length) return;
@@ -97,11 +109,12 @@ export function Sheet({
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
+      openSheets.splice(openSheets.indexOf(token), 1);
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = overflow;
       prev?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div className="fixed inset-0 z-sheet flex items-end justify-center sm:items-center sm:p-6">

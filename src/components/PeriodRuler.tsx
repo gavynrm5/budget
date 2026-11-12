@@ -14,7 +14,7 @@ export function PeriodRuler({ calc }: { calc: PeriodCalc }) {
   const state = today < start ? "future" : today > end ? "past" : "now";
   const day = state === "now" ? dayOfPeriod(id, today) : state === "past" ? total : 0;
   const elapsed = day / total;
-  const spentShare = calc.totalBudgeted > 0 ? calc.totalSpent / calc.totalBudgeted : 0;
+  const spentShare = calc.totalPctUsed;
   const ahead = state === "now" && spentShare > elapsed + 0.1;
 
   // Tick marks: one per day, taller at the 1st of the month.
