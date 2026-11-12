@@ -35,7 +35,10 @@ describe("wrap-up", () => {
   it("counts extra income, and savings moves lower the leftover while carries are tracked separately", () => {
     const moved = [...txs, tx("2026-10-14", 500, "emergency", "Savings", "Leftover from September", { periodOverride: "2026-09" })];
     const wrap: WrapUp = { id: "2026-09", moves: [{ kind: "carry", amount: 400, refId: "x", at: 1 }], completedAt: null };
-    const extra = [{ id: "e", date: "2026-09-25", amount: 200, source: "Birthday", accountId: null, notes: "", allocations: [] }];
+    const extra = [
+      { id: "e", date: "2026-09-25", amount: 200, source: "Birthday", accountId: null, notes: "", allocations: [] },
+      { id: "x", date: "2026-10-15", amount: 400, source: "Left over from September", accountId: null, notes: "", allocations: [] } // the carry, in the next period
+    ];
     const w = buildWrapUp("2026-09", periods, moved, s, extra, [], [], wrap);
     expect(w.extraIncome).toBe(200);
     expect(w.leftover).toBe(1630); // 4000 + 200 - 2570
@@ -110,5 +113,44 @@ describe("search", () => {
       { periodId: "2026-07", total: 7.25, count: 1 },
       { periodId: "2026-08", total: 6.5, count: 1 }
     ]);
+  });
+});
+
+describe("review fixes", () => {
+  it("rounds half cents correctly at any size", async () => {
+    const { round2 } = await import("../money");
+    expect(round2(1.005)).toBe(1.01);
+    expect(round2(1000.005)).toBe(1000.01);
+    expect(round2(-2.675)).toBe(-2.68);
+    expect(round2(35.589999999999996)).toBe(35.59);
+    expect(Object.is(round2(-0.001), 0)).toBe(true);
+  });
+
+  it("stops counting a carry once its extra income entry is deleted", () => {
+    const wrap: WrapUp = { id: "2026-09", moves: [{ kind: "carry", amount: 400, refId: "carry-1", at: 1 }], completedAt: null };
+    const txs = [tx("2026-09-20", 1000, "groceries", "Essentials")];
+    const carry = { id: "carry-1", date: "2026-10-15", amount: 400, source: "Left over", accountId: null, notes: "", allocations: [] };
+    expect(buildWrapUp("2026-09", periods, txs, s, [carry], [], [], wrap).leftToMove).toBe(2600);
+    expect(buildWrapUp("2026-09", periods, txs, s, [], [], [], wrap).leftToMove).toBe(3000);
+  });
+
+  it("keeps current accounts and keys when a backup doesn't have them", async () => {
+    const { restoredSettings } = await import("../backup");
+    const current = { ...s, anthropicKey: "sk-cur", twelveDataKey: "td-cur", accounts: defaultAccounts().map((a) => ({ ...a, balance: 500 })) };
+    const old = { takeHomeIncome: 3000 }; // from before accounts existed
+    const r = restoredSettings(old, current);
+    expect(r.takeHomeIncome).toBe(3000);
+    expect(r.accounts[0].balance).toBe(500);
+    expect(r.anthropicKey).toBe("sk-cur");
+    expect(restoredSettings({ accounts: [] }, current).accounts).toEqual([]);
+  });
+
+  it("splits restore writes by count and by size", async () => {
+    const { chunkWrites } = await import("../backup");
+    const small = Array.from({ length: 900 }, (_, i) => ({ data: { i } }));
+    expect(chunkWrites(small).map((c) => c.length)).toEqual([400, 400, 100]);
+    const photos = Array.from({ length: 5 }, () => ({ data: { image: "x".repeat(300) } }));
+    expect(chunkWrites(photos, 400, 700).map((c) => c.length)).toEqual([2, 2, 1]);
+    expect(chunkWrites([{}, {}]).length).toBe(1); // deletes carry no data
   });
 });

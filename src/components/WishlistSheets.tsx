@@ -336,7 +336,7 @@ export function ItemSheet({ list, item, onClose }: { list: WishList; item: WishI
               {imgBusy ? (
                 <span className="text-xs text-muted">Shrinking...</span>
               ) : preview ? (
-                <img src={preview} alt="" className="h-full w-full object-cover" onError={() => setErr((x) => ({ ...x, image: "That image link didn't load. Check it, or upload a photo instead." }))} />
+                <img referrerPolicy="no-referrer" src={preview} alt="" className="h-full w-full object-cover" onError={() => setErr((x) => ({ ...x, image: "That image link didn't load. Check it, or upload a photo instead." }))} />
               ) : (
                 <ImagePlus size={26} className="text-muted" aria-hidden />
               )}

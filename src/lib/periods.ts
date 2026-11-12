@@ -42,10 +42,6 @@ export function shiftPeriod(id: string, delta: number): string {
   return periodIdFor(Math.floor(idx / 12), (idx % 12) + 1);
 }
 
-export function comparePeriods(a: string, b: string): number {
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
 export function periodRange(id: string): { start: string; end: string } {
   const { y, m } = parseISO(id + "-01");
   const next = shiftPeriod(id, 1);
