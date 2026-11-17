@@ -72,8 +72,13 @@ export interface LineCalc {
 export interface GroupCalc {
   category: Category;
   lines: LineCalc[];
-  /** Spending in this group on sub-categories that have no line this period. */
-  unbudgeted: { subId: string; name: string; spent: number }[];
+  /**
+   * Spending in this group on sub-categories that have no line this period.
+   * `outside` ones were paid from extra money and aren't in `spent`.
+   */
+  unbudgeted: { subId: string; name: string; spent: number; outside: boolean }[];
+  /** Spending left out of `spent` because it was paid from extra money. */
+  outsideSpent: number;
   budgeted: number;
   extra: number;
   targetPct: number | null;
@@ -120,6 +125,10 @@ export function computePeriod(
 ): PeriodCalc {
   const income = totalIncome(settings);
   const { lineItems, virtual } = resolveBudget(periodId, periods, settings);
+  const lineSubs = new Set(lineItems.map((li) => li.subId));
+  // Only subs without a line can be left out; re-adding a line counts it again.
+  const outside = new Set((periods[periodId]?.outsideBudget ?? []).filter((id) => !lineSubs.has(id)));
+  const counted = (t: Transaction) => !outside.has(t.subId);
   const txs = transactions.filter((t) => txPeriod(t) === periodId);
   const extras = extraIncome.filter((x) => extraPeriod(x) === periodId);
   const extraBySub = new Map<string, number>();
@@ -150,15 +159,16 @@ export function computePeriod(
     const groupTx = txs.filter((t) => t.category === category);
     const budgeted = sum(items.map((i) => i.budgeted));
     const extra = sum(lines.map((l) => l.extra));
-    const spent = sum(groupTx.map((t) => t.amount));
-    const lineSubs = new Set(lineItems.map((li) => li.subId));
+    const spent = sum(groupTx.filter(counted).map((t) => t.amount));
+    const outsideSpent = sum(groupTx.filter((t) => !counted(t)).map((t) => t.amount));
     const unbMap = new Map<string, number>();
     groupTx.filter((t) => !lineSubs.has(t.subId)).forEach((t) => unbMap.set(t.subId, (unbMap.get(t.subId) ?? 0) + t.amount));
     const pctUsed = budgeted + extra === 0 ? 0 : spent / (budgeted + extra);
     groups[category] = {
       category,
       lines,
-      unbudgeted: [...unbMap].map(([subId, v]) => ({ subId, name: subName(settings.subCategories, subId), spent: round2(v) })),
+      unbudgeted: [...unbMap].map(([subId, v]) => ({ subId, name: subName(settings.subCategories, subId), spent: round2(v), outside: outside.has(subId) })),
+      outsideSpent,
       budgeted,
       extra,
       targetPct: base === 0 ? null : budgeted / base,
@@ -171,7 +181,9 @@ export function computePeriod(
   }
 
   const totalBudgeted = sum(lineItems.map((li) => li.budgeted));
-  const totalSpent = sum(txs.map((t) => t.amount));
+  // Spending paid from extra money doesn't count against the budget, but it still left your accounts.
+  const totalSpent = sum(txs.filter(counted).map((t) => t.amount));
+  const allSpent = sum(txs.map((t) => t.amount));
   const extraTotal = sum(extras.map((x) => x.amount));
   const extraAllocated = sum(extras.flatMap((x) => x.allocations.map((a) => a.amount)));
   // Extra assigned to a sub with no line this period still adds to what can be spent overall.
@@ -187,7 +199,7 @@ export function computePeriod(
     totalPctUsed,
     totalStatus: statusFor(totalPctUsed),
     unallocated: round2(income - totalBudgeted),
-    leftFromIncome: round2(income + extraTotal - totalSpent),
+    leftFromIncome: round2(income + extraTotal - allSpent),
     transactions: txs,
     virtual,
     extras,
