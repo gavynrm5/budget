@@ -10,6 +10,7 @@ export function restoredSettings(backup: Partial<Settings>, current: Settings): 
   return {
     ...defaultSettings(),
     ...backup,
+    targets: { ...defaultSettings().targets, ...backup.targets },
     accounts: backup.accounts ?? current.accounts,
     anthropicKey: backup.anthropicKey || current.anthropicKey,
     twelveDataKey: backup.twelveDataKey || current.twelveDataKey

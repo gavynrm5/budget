@@ -19,12 +19,12 @@ const DEFAULT_SUBS: Record<Category, [string, string][]> = {
   ],
   Savings: [
     ["emergency", "Emergency Fund"],
-    ["taxes", "Taxes / Estimated"],
     ["investing", "Investing / Brokerage"],
     ["retirement", "Retirement (401k/IRA)"],
     ["debt", "Debt Repayment"],
     ["other-savings", "Other Savings Goal"]
-  ]
+  ],
+  Taxes: [["taxes", "Taxes / Estimated"]]
 };
 
 export function defaultSubCategories(): SubCategory[] {
@@ -43,7 +43,7 @@ export function defaultSettings(): Settings {
     takeHomeIncome: 4000.0,
     takeHomeNote: "Net pay",
     otherIncome: 0,
-    targets: { Essentials: 50, Wants: 30, Savings: 20 },
+    targets: { Essentials: 50, Wants: 30, Savings: 20, Taxes: 0 },
     fixedExpenses: [
       { id: "fx-rent", name: "Rent / Mortgage", amount: 1500.0 },
       { id: "fx-car", name: "Car Payment", amount: 350.0 },
@@ -55,6 +55,8 @@ export function defaultSettings(): Settings {
     wishlistCategories: ["Furniture", "Decor", "Lighting", "Other"],
     wishlistRooms: ["Living Room", "Bathroom"],
     startPeriod: "2026-03",
+    // Empty means the one-time move of taxes into their own group hasn't run yet.
+    taxesSplitFrom: "",
     twelveDataKey: "",
     accounts: defaultAccounts(),
     anthropicKey: ""
@@ -79,7 +81,8 @@ export function defaultAccounts(): Account[] {
 export const RECOMMENDED_RANGES: Record<Category, string> = {
   Essentials: "40 to 50%",
   Wants: "20 to 30%",
-  Savings: "20% or more"
+  Savings: "20% or more",
+  Taxes: "whatever you set aside for taxes"
 };
 
 /** Line items for a brand new budget: every active sub, fixed expenses prefilled. */

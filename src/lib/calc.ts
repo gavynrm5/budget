@@ -17,6 +17,24 @@ export function totalIncome(s: Settings): number {
   return round2(s.takeHomeIncome + s.otherIncome);
 }
 
+/** Groups whose targets are shares of income after taxes. Taxes itself is a share of all income. */
+export const SPENDING_GROUPS: Category[] = ["Essentials", "Wants", "Savings"];
+
+/** Income left once the Taxes target is set aside. */
+export function afterTaxIncome(s: Settings): number {
+  return round2(totalIncome(s) * (1 - (s.targets.Taxes ?? 0) / 100));
+}
+
+/** What a group's percentages are measured against: all income for Taxes, after-tax income for the rest. */
+export function targetBase(category: Category, s: Settings): number {
+  return category === "Taxes" ? totalIncome(s) : afterTaxIncome(s);
+}
+
+/** Essentials + Wants + Savings targets, which should come to 100% of after-tax income. */
+export function spendingTargetSum(s: Settings): number {
+  return SPENDING_GROUPS.reduce((a, c) => a + (s.targets[c] ?? 0), 0);
+}
+
 export function txPeriod(tx: Transaction): string {
   return tx.periodOverride || periodOfDate(tx.date);
 }
@@ -110,6 +128,7 @@ export function computePeriod(
 
   const groups = {} as Record<Category, GroupCalc>;
   for (const category of CATEGORIES) {
+    const base = targetBase(category, settings);
     const items = lineItems.filter((li) => li.category === category);
     const lines: LineCalc[] = items.map((item) => {
       const spent = sum(txs.filter((t) => t.subId === item.subId).map((t) => t.amount));
@@ -119,7 +138,7 @@ export function computePeriod(
       return {
         item,
         name: subName(settings.subCategories, item.subId),
-        targetPct: income === 0 ? null : item.budgeted / income,
+        targetPct: base === 0 ? null : item.budgeted / base,
         extra,
         available,
         spent,
@@ -142,8 +161,8 @@ export function computePeriod(
       unbudgeted: [...unbMap].map(([subId, v]) => ({ subId, name: subName(settings.subCategories, subId), spent: round2(v) })),
       budgeted,
       extra,
-      targetPct: income === 0 ? null : budgeted / income,
-      targetAmount: round2((income * settings.targets[category]) / 100),
+      targetPct: base === 0 ? null : budgeted / base,
+      targetAmount: round2((base * settings.targets[category]) / 100),
       spent,
       remaining: round2(budgeted + extra - spent),
       pctUsed,

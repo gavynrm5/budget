@@ -152,7 +152,7 @@ It opens full screen like a native app. On iPhone, the home screen app keeps its
 1. In your spreadsheet, make a sheet with exactly these columns: `Date, Amount, Category, Sub-Category, Description, Notes`.
    - **Date:** `2026-03-16` or `3/16/2026`
    - **Amount:** a number, or simple math like `29.76+5.83`
-   - **Category:** `Essentials`, `Wants`, or `Savings` (`Savings & Debt` also works)
+   - **Category:** `Essentials`, `Wants`, `Savings` (`Savings & Debt` also works), or `Taxes`
    - **Sub-Category:** matched by name. Unknown names become new sub-categories under that category.
 2. Export it as CSV (File > Download > CSV in Google Sheets, or Save As > CSV in Excel).
 3. In the app: **Settings > Backup and import > Import transactions CSV**. You get a preview with any problem rows listed before anything is saved.
@@ -196,7 +196,7 @@ The **Insights** page (under More on a phone), with the top three tips on the Da
 - Places you went 3 or more times this period, and charges that repeat every month at about the same amount and day.
 - How moving a little from an overspent line into a wishlist goal would reach it sooner.
 
-Fixed bills (anything named like a fixed expense in Settings) and every Savings & Debt line are left out. **Got it** hides a tip for the rest of the period.
+Fixed bills (anything named like a fixed expense in Settings) and every Savings & Debt and Taxes line are left out. **Got it** hides a tip for the rest of the period.
 
 **AI-written tips (optional).** The app works out all the numbers itself. With your own Anthropic API key, Claude (`claude-opus-5`) rewrites them as friendlier, more specific advice, using only those numbers. To set it up, open Insights, tap the key icon, and paste a key from https://console.anthropic.com. Set a monthly spend limit there too. Each set of tips costs a few cents, and tips are saved and only rewritten when your spending changes, at most about twice a day, or when you tap Refresh. What gets sent: this period's facts, plus category names, store names, amounts and goal names. Account names, balances and notes are never sent. The key is stored with your data, which only you can read, and is left out of backup files. Without a key, or if Claude can't be reached, the same tips appear in plain wording.
 
@@ -271,7 +271,9 @@ These match the original spreadsheet exactly (see `src/lib/calc.ts`; tests in `s
 - **Periods:** the 15th of one month through the 14th of the next, named for the starting month. A transaction's period comes from its date unless you set it by hand.
 - **Income** = take-home + other income.
 - **Line item:** Target % = budgeted / income. Spent = that period's transactions for that sub-category. Remaining = budgeted - spent. % Used = spent / budgeted, shown as "-" when budgeted is $0.
-- **Group (Essentials, Wants, Savings):** Budgeted = sum of the group's lines. Spent = that period's transactions whose **category** is the group (summed by category, not sub-category, just like the sheet). Target $ = income x the group's target %.
+- **Group (Essentials, Wants, Savings, Taxes):** Budgeted = sum of the group's lines. Spent = that period's transactions whose **category** is the group (summed by category, not sub-category, just like the sheet).
+- **Targets:** Taxes $ = income x the Taxes %. Essentials, Wants and Savings are measured against after-tax income (income minus the Taxes target), so their target $ = after-tax income x the group's %, and those three should add up to 100%. Each line's and group's "Target %" uses the same base.
+- **Taxes group:** "Taxes / Estimated" moved from Savings into its own group starting with the pay period the update first ran in. Earlier periods keep it under Savings so their totals don't change.
 - **Totals:** Unallocated (slack) = income - total budgeted, red when negative. Dashboard "Left from Income" = income - total spent.
 - **Status:** over 100% used is Over Budget, over 85% is Near Limit, otherwise On Track.
 - Money is rounded to cents, and totals are summed in whole cents so they never drift.

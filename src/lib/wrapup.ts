@@ -45,8 +45,8 @@ export function buildWrapUp(
   const carried = sum((wrap?.moves ?? []).filter((m) => m.kind === "carry" && extraIncome.some((x) => x.id === m.refId)).map((m) => m.amount));
 
   const prevId = shiftPeriod(periodId, -1);
-  // Savings aren't spending here, so moving leftover into savings never looks like overspending.
-  const spentIn = (p: string) => sum(transactions.filter((t) => txPeriod(t) === p && t.category !== "Savings").map((t) => t.amount));
+  // Savings and taxes aren't everyday spending, so moving leftover into savings never looks like overspending.
+  const spentIn = (p: string) => sum(transactions.filter((t) => txPeriod(t) === p && t.category !== "Savings" && t.category !== "Taxes").map((t) => t.amount));
   const prevSpent = spentIn(prevId);
   const thisSpent = spentIn(periodId);
   const { start, end } = periodRange(periodId);

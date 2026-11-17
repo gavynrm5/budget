@@ -20,6 +20,8 @@ const ROWS: RowDef[] = [
   { label: "Wants Spent", get: (c) => c.groups.Wants.spent },
   { label: "Savings Budget", get: (c) => c.groups.Savings.budgeted, divider: true },
   { label: "Savings Spent", get: (c) => c.groups.Savings.spent },
+  { label: "Taxes Budget", get: (c) => c.groups.Taxes.budgeted, divider: true },
+  { label: "Taxes Spent", get: (c) => c.groups.Taxes.spent },
   { label: "Total Budgeted", get: (c) => c.totalBudgeted, strong: true, divider: true },
   { label: "Total Spent", get: (c) => c.totalSpent, strong: true }
 ];

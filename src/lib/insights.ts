@@ -57,22 +57,23 @@ export function merchantKey(desc: string): string {
   return norm(desc).replace(/[#*]\s*\d+/g, "").replace(/\d{3,}/g, "").replace(/[^a-z& ]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
-/** Sub-categories tips never cover: fixed bills (matched by name) and anything under Savings & Debt. */
+/** Sub-categories tips never cover: fixed bills (matched by name) and anything under Savings & Debt or Taxes. */
 export function excludedSubs(settings: Settings): Set<string> {
   const fixed = new Set(settings.fixedExpenses.map((f) => norm(f.name)));
-  return new Set(settings.subCategories.filter((s) => s.category === "Savings" || fixed.has(norm(s.name))).map((s) => s.id));
+  return new Set(settings.subCategories.filter((s) => s.category === "Savings" || s.category === "Taxes" || fixed.has(norm(s.name))).map((s) => s.id));
 }
 
 export function buildInsights(input: InsightsInput): InsightsData {
   const { periodId, today, periods, transactions, settings, extraIncome, wishLists, wishlist } = input;
   const skip = excludedSubs(settings);
-  const variable = (t: Transaction) => !skip.has(t.subId) && t.category !== "Savings";
+  const notEveryday = (c: string) => c === "Savings" || c === "Taxes";
+  const variable = (t: Transaction) => !skip.has(t.subId) && !notEveryday(t.category);
   const daysTotal = daysInPeriod(periodId);
   const day = Math.max(1, Math.min(daysTotal, dayOfPeriod(periodId, today)));
   const daysLeft = daysTotal - day;
   const elapsed = day / daysTotal;
   const calc = computePeriod(periodId, periods, transactions, settings, extraIncome);
-  const lines: LineCalc[] = Object.values(calc.groups).flatMap((g) => g.lines).filter((l) => !skip.has(l.item.subId) && l.item.category !== "Savings");
+  const lines: LineCalc[] = Object.values(calc.groups).flatMap((g) => g.lines).filter((l) => !skip.has(l.item.subId) && !notEveryday(l.item.category));
   const subName = (id: string) => settings.subCategories.find((s) => s.id === id)?.name ?? "Other";
   const facts: Fact[] = [];
 

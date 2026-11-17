@@ -16,6 +16,7 @@ import { defaultPlanning, defaultSettings } from "../lib/defaults";
 import { periodsBetween, resolveBudget } from "../lib/calc";
 import { currentPeriodId, toISODate } from "../lib/periods";
 import { chunkWrites, restoredSettings } from "../lib/backup";
+import { splitTaxes } from "../lib/taxes";
 import { tradesFromLegacy } from "../lib/portfolio";
 import type { ExtraIncome, LegacyHolding, NetWorthPoint, WrapUp, LineItem, PeriodBudget, Planning, Settings, SubCategory, Trade, Transaction, Transfer, WishItem, WishList } from "../lib/types";
 import { legacyToList } from "../lib/wishlist";
@@ -188,7 +189,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
       onSnapshot(base("meta", "settings"), opts, (snap) => {
         markPending("settings", snap.metadata.hasPendingWrites);
         if (snap.exists()) {
-          setSettings({ ...defaultSettings(), ...(snap.data() as Partial<Settings>) });
+          const saved = snap.data() as Partial<Settings>;
+          const d = defaultSettings();
+          setSettings({ ...d, ...saved, targets: { ...d.targets, ...saved.targets } });
         } else if (!snap.metadata.fromCache) {
           // First run on a fresh account: seed defaults.
           const s = defaultSettings();
@@ -385,6 +388,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
     },
     [fire]
   );
+
+  // Move "Taxes / Estimated" out of Savings into its own Taxes group, from the
+  // current pay period on (earlier periods keep their totals). Runs once.
+  const taxesRef = useRef(false);
+  useEffect(() => {
+    if (!db || !uid || !loaded || taxesRef.current || settings.taxesSplitFrom) return;
+    if (!serverSeen.current.settings || !serverSeen.current.periods || !ensuredRef.current) return;
+    taxesRef.current = true;
+    const from = currentPeriodId();
+    const split = splitTaxes(settings, periods, transactions, from);
+    const ops: { ref: DocumentReference; data?: object }[] = [
+      ...split.periods.map((p) => ({ ref: base("periods", p.id), data: { lineItems: p.lineItems } })),
+      ...split.transactions.map((t) => ({ ref: base("transactions", t.id), data: stripId(t) }))
+    ];
+    for (const p of split.periods) setPeriods((cur) => ({ ...cur, [p.id]: p }));
+    updateSettings({ subCategories: split.subCategories, taxesSplitFrom: from });
+    void chunkedWrite(ops);
+  }, [loaded, uid, settings, periods, transactions, base, updateSettings, chunkedWrite]);
 
   const addTransactions = useCallback(
     async (txs: Transaction[], newSubs: SubCategory[]) => {

@@ -7,7 +7,7 @@ import { fmt, round2, sum } from "../lib/money";
 import { RECOMMENDED_RANGES } from "../lib/defaults";
 import { download } from "../lib/csv";
 import { parseTransactionsCSV, SAMPLE_CSV, transactionsToCSV, wishlistToCSV, type CsvImportResult } from "../lib/importExport";
-import { applyFixedExpenses, resolveBudget } from "../lib/calc";
+import { afterTaxIncome, applyFixedExpenses, resolveBudget, SPENDING_GROUPS, spendingTargetSum, targetBase } from "../lib/calc";
 import { currentPeriodId, isValidPeriodId, periodName } from "../lib/periods";
 import { getTheme, setTheme, type ThemePref } from "../lib/theme";
 import { CATEGORIES, CATEGORY_LABEL, type Category, type SubCategory } from "../lib/types";
@@ -34,7 +34,8 @@ export default function Settings() {
   const csvRef = useRef<HTMLInputElement>(null);
 
   const income = round2(settings.takeHomeIncome + settings.otherIncome);
-  const targetSum = CATEGORIES.reduce((a, c) => a + settings.targets[c], 0);
+  const targetSum = spendingTargetSum(settings);
+  const afterTax = afterTaxIncome(settings);
   const stamp = new Date().toISOString().slice(0, 10);
 
   // Sub-category helpers
@@ -150,13 +151,13 @@ export default function Settings() {
           </p>
         </Section>
 
-        <Section id="s-targets" title="Allocation targets" desc="Percent of income for each group.">
+        <Section id="s-targets" title="Allocation targets" desc="Taxes is a percent of all income and comes out first. Essentials, Wants and Savings are percents of what's left after taxes, and should add up to 100%.">
           <div className="grid gap-3">
             {CATEGORIES.map((c) => (
               <div key={c} className="flex items-center gap-3">
                 <label htmlFor={`t-${c}`} className="flex-1">
                   <span className="font-medium">{CATEGORY_LABEL[c]}</span>
-                  <span className="block text-xs text-muted">Recommended {RECOMMENDED_RANGES[c]}. Target {fmt((income * settings.targets[c]) / 100)}</span>
+                  <span className="block text-xs text-muted">Recommended {RECOMMENDED_RANGES[c]}. Target {fmt((targetBase(c, settings) * settings.targets[c]) / 100)}</span>
                 </label>
                 <div className="relative w-28">
                   <input
@@ -181,7 +182,9 @@ export default function Settings() {
           </div>
           <p className={`mt-4 flex items-center gap-2 rounded-xl px-4 py-3 text-sm ${targetSum === 100 ? "bg-good/10 text-good" : "bg-warn/15 text-warn"}`} role="status">
             {targetSum !== 100 && <TriangleAlert size={16} aria-hidden />}
-            {targetSum === 100 ? "Targets add up to 100%." : `Saved targets add up to ${targetSum}% (${CATEGORIES.map((c) => settings.targets[c]).join(" + ")}). ${100 - targetSum > 0 ? `${100 - targetSum}% of income has no target.` : `That is ${targetSum - 100}% more than your income.`}`}
+            {targetSum === 100
+              ? `Essentials, Wants and Savings add up to 100% of ${fmt(afterTax)} after taxes.`
+              : `Essentials, Wants and Savings add up to ${targetSum}% (${SPENDING_GROUPS.map((c) => settings.targets[c]).join(" + ")}) of after-tax income. ${100 - targetSum > 0 ? `${100 - targetSum}% has no target.` : `That is ${targetSum - 100}% more than you have after taxes.`}`}
           </p>
         </Section>
 
@@ -236,7 +239,7 @@ export default function Settings() {
 
         <div className="lg:col-span-2">
           <Section id="s-cats" title="Categories and sub-categories" desc="Rename, reorder, move to another default group, or archive. To place a line in a different group for just one period, use the Period Budget screen.">
-            <div className="grid gap-6 lg:grid-cols-3">
+            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
               {CATEGORIES.map((c) => {
                 const active = subs.filter((s) => s.category === c && !s.archived);
                 const archived = subs.filter((s) => s.category === c && s.archived);
