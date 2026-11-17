@@ -32,7 +32,7 @@ export default function PeriodBudget() {
   // Apply unsaved keystrokes so every total recalculates while typing.
   const calc = useMemo(() => {
     const items = base.lineItems.map((li) => (li.id in drafts ? { ...li, budgeted: drafts[li.id] } : li));
-    const patched: Record<string, PB> = { ...periods, [periodId]: { id: periodId, lineItems: items } };
+    const patched: Record<string, PB> = { ...periods, [periodId]: { ...periods[periodId], id: periodId, lineItems: items } };
     const c = computePeriod(periodId, patched, transactions, settings, data.extraIncome);
     return { ...c, virtual: base.virtual };
   }, [base, drafts, periods, periodId, transactions, settings, data.extraIncome]);
@@ -42,6 +42,12 @@ export default function PeriodBudget() {
   const saved = useMemo(() => new Map(base.lineItems.map((li) => [li.id, li.budgeted])), [base]);
 
   const save = (items: LineItem[]) => data.savePeriod(periodId, items);
+
+  // Spending on a sub with no line that was paid from extra money stops counting against the budget.
+  const setOutside = (subId: string, on: boolean) => {
+    const cur = periods[periodId]?.outsideBudget ?? [];
+    data.setOutsideBudget(periodId, base.lineItems, on ? [...new Set([...cur, subId])] : cur.filter((id) => id !== subId));
+  };
 
   const setDraft = (id: string, v: number) =>
     setDrafts((d) => {
@@ -143,6 +149,7 @@ export default function PeriodBudget() {
             onCommit={setBudget}
             onMove={moveLine}
             onRemove={removeLine}
+            onOutside={setOutside}
             onAdd={() => setAdding(c)}
           />
         ))}
@@ -212,6 +219,7 @@ function GroupSection({
   onCommit,
   onMove,
   onRemove,
+  onOutside,
   onAdd
 }: {
   group: GroupCalc;
@@ -221,6 +229,7 @@ function GroupSection({
   onCommit: (id: string, v: number) => void;
   onMove: (id: string, c: Category) => void;
   onRemove: (l: LineCalc) => void;
+  onOutside: (subId: string, on: boolean) => void;
   onAdd: () => void;
 }) {
   const title = CATEGORY_LABEL[group.category];
@@ -286,11 +295,13 @@ function GroupSection({
             ))}
             {group.unbudgeted.map((u) => (
               <tr key={u.subId} className="border-b border-line/60 text-muted">
-                <th scope="row" className="td pl-5 text-left font-normal italic">{u.name} (no budget line)</th>
+                <th scope="row" className="td pl-5 text-left font-normal italic">
+                  {u.name} ({u.outside ? "paid from extra money" : "no budget line"})
+                </th>
                 <td className="td text-right">-</td>
                 <td className="td text-right">-</td>
                 <td className="td text-right"><Money value={u.spent} /></td>
-                <td className="td" colSpan={4} />
+                <td className="td" colSpan={4}><OutsideToggle u={u} onOutside={onOutside} /></td>
               </tr>
             ))}
             <tr className="bg-surface-2/60 font-semibold">
@@ -342,9 +353,12 @@ function GroupSection({
           </li>
         ))}
         {group.unbudgeted.map((u) => (
-          <li key={u.subId} className="flex justify-between px-4 py-3 text-sm text-muted">
-            <span className="italic">{u.name} (no budget line)</span>
-            <Money value={u.spent} />
+          <li key={u.subId} className="px-4 py-3 text-sm text-muted">
+            <div className="flex justify-between">
+              <span className="italic">{u.name} ({u.outside ? "paid from extra money" : "no budget line"})</span>
+              <Money value={u.spent} />
+            </div>
+            <OutsideToggle u={u} onOutside={onOutside} />
           </li>
         ))}
         <li className="bg-surface-2/60 px-4 py-3">
@@ -548,5 +562,20 @@ function GoalNote({ goal }: { goal?: GoalInfo }) {
       </span>
       <span className="num">{fmt(goal.saved)} of {fmt(goal.goal)} saved</span>
     </Link>
+  );
+}
+
+/** Marks no-line spending as paid from extra money (not counted against the budget), or counts it again. */
+function OutsideToggle({ u, onOutside }: { u: GroupCalc["unbudgeted"][number]; onOutside: (subId: string, on: boolean) => void }) {
+  return (
+    <span className="flex flex-wrap items-center justify-end gap-x-2">
+      {u.outside && <span className="text-xs">Not counted against the budget.</span>}
+      <button
+        className="min-h-[36px] text-sm font-medium text-primary hover:underline"
+        onClick={() => onOutside(u.subId, !u.outside)}
+      >
+        {u.outside ? "Count it" : "Paid from extra money"}
+      </button>
+    </span>
   );
 }

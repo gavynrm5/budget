@@ -81,6 +81,11 @@ export interface LineItem {
 export interface PeriodBudget {
   id: string; // "YYYY-MM" of the starting month
   lineItems: LineItem[];
+  /**
+   * Sub-categories with no line this period whose spending was paid from
+   * extra money, so it doesn't count against the group's budget.
+   */
+  outsideBudget?: string[];
 }
 
 export interface Transaction {

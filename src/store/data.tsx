@@ -69,6 +69,8 @@ interface DataContextValue {
   updateSettings: (patch: Partial<Settings>) => void;
   saveSubCategories: (subs: SubCategory[]) => void;
   savePeriod: (periodId: string, lineItems: LineItem[]) => void;
+  /** Sets which no-line sub-categories were paid from extra money. `lineItems` saves the budget too if it was only a copy. */
+  setOutsideBudget: (periodId: string, lineItems: LineItem[], subIds: string[]) => void;
   saveTransaction: (tx: Transaction) => void;
   deleteTransaction: (id: string) => void;
   addTransactions: (txs: Transaction[], newSubs: SubCategory[]) => Promise<void>;
@@ -223,7 +225,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       onSnapshot(col("periods"), opts, (snap) => {
         markPending("periods", snap.metadata.hasPendingWrites);
         const map: Record<string, PeriodBudget> = {};
-        snap.forEach((d) => { map[d.id] = { id: d.id, lineItems: (d.data().lineItems ?? []) as LineItem[] }; });
+        snap.forEach((d) => {
+          const v = d.data();
+          map[d.id] = { id: d.id, lineItems: (v.lineItems ?? []) as LineItem[], ...(v.outsideBudget?.length ? { outsideBudget: v.outsideBudget as string[] } : {}) };
+        });
         setPeriods(map);
         if (!snap.metadata.fromCache) serverSeen.current.periods = true;
         markLoaded("periods");
@@ -342,7 +347,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     }
     const cur = periods[currentPeriodId()];
     if (cur && !cur.lineItems.some((li) => li.subId === sub.id)) {
-      batch.set(base("periods", cur.id), { lineItems: [...cur.lineItems, { id: `li-${sub.id}`, subId: sub.id, category: "Savings", budgeted: 0 }] });
+      batch.set(base("periods", cur.id), { lineItems: [...cur.lineItems, { id: `li-${sub.id}`, subId: sub.id, category: "Savings", budgeted: 0 }] }, { merge: true });
     }
     fire(batch.commit());
   }, [loaded, uid, wishlist, wishLists, settings, periods, base, fire]);
@@ -361,10 +366,20 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const savePeriod = useCallback(
     (periodId: string, lineItems: LineItem[]) => {
-      setPeriods((p) => ({ ...p, [periodId]: { id: periodId, lineItems } }));
-      fire(setDoc(base("periods", periodId), { lineItems }));
+      setPeriods((p) => ({ ...p, [periodId]: { ...p[periodId], id: periodId, lineItems } }));
+      // Merge so the period's other settings (like outsideBudget) are kept.
+      fire(setDoc(base("periods", periodId), { lineItems }, { merge: true }));
     },
     [base, fire]
+  );
+
+  const setOutsideBudget = useCallback(
+    (periodId: string, lineItems: LineItem[], subIds: string[]) => {
+      setPeriods((p) => ({ ...p, [periodId]: { id: periodId, lineItems: p[periodId]?.lineItems ?? lineItems, outsideBudget: subIds } }));
+      const saved = periods[periodId];
+      fire(setDoc(base("periods", periodId), saved ? { outsideBudget: subIds } : { lineItems, outsideBudget: subIds }, { merge: true }));
+    },
+    [base, fire, periods]
   );
 
   const saveTransaction = useCallback(
@@ -399,7 +414,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const from = currentPeriodId();
     const split = splitTaxes(settings, periods, transactions, from);
     const ops: { ref: DocumentReference; data?: object }[] = [
-      ...split.periods.map((p) => ({ ref: base("periods", p.id), data: { lineItems: p.lineItems } })),
+      ...split.periods.map((p) => ({ ref: base("periods", p.id), data: { lineItems: p.lineItems, outsideBudget: p.outsideBudget ?? [] } })),
       ...split.transactions.map((t) => ({ ref: base("transactions", t.id), data: stripId(t) }))
     ];
     for (const p of split.periods) setPeriods((cur) => ({ ...cur, [p.id]: p }));
@@ -502,7 +517,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       wrapUps.forEach((w) => ops.push({ ref: base("wrapUps", w.id) }));
       ops.push({ ref: base("meta", "settings"), data: { ...restoredSettings(b.settings, settings), ...(restoredSubs ? { subCategories: restoredSubs } : {}) } });
       ops.push({ ref: base("meta", "planning"), data: b.planning ?? defaultPlanning() });
-      b.periods.forEach((p) => ops.push({ ref: base("periods", p.id), data: { lineItems: p.lineItems } }));
+      b.periods.forEach((p) => ops.push({ ref: base("periods", p.id), data: { lineItems: p.lineItems, outsideBudget: p.outsideBudget ?? [] } }));
       b.transactions.forEach((t) => ops.push({ ref: base("transactions", t.id), data: stripId(t) }));
       items.forEach((w) => ops.push({ ref: base("wishlist", w.id), data: stripId(w) }));
       restored?.forEach((t) => ops.push({ ref: base("trades", t.id), data: stripId(t) }));
@@ -545,6 +560,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateSettings,
     saveSubCategories,
     savePeriod,
+    setOutsideBudget,
     saveTransaction,
     deleteTransaction,
     addTransactions,

@@ -81,3 +81,29 @@ describe("older saved data", () => {
     expect(parseCategory("tax")).toBe("Taxes");
   });
 });
+
+describe("paid from extra money", () => {
+  const s = { ...defaultSettings(), takeHomeIncome: 4000, otherIncome: 0 };
+  const lines = [{ id: "e", subId: "emergency", category: "Savings" as const, budgeted: 775 }];
+  const txs: Transaction[] = [{ id: "f", date: "2026-11-20", amount: 2200, category: "Savings", subId: "furniture-fund", description: "", notes: "" }];
+
+  it("counts no-line spending by default", () => {
+    const c = computePeriod("2026-11", { "2026-11": { id: "2026-11", lineItems: lines } }, txs, s);
+    expect(c.groups.Savings.spent).toBe(2200);
+    expect(c.groups.Savings.status).toBe("over");
+  });
+  it("leaves it out of the budget once marked, but not out of what's left", () => {
+    const c = computePeriod("2026-11", { "2026-11": { id: "2026-11", lineItems: lines, outsideBudget: ["furniture-fund"] } }, txs, s);
+    expect(c.groups.Savings.spent).toBe(0);
+    expect(c.groups.Savings.outsideSpent).toBe(2200);
+    expect(c.groups.Savings.status).toBe("ok");
+    expect(c.groups.Savings.unbudgeted[0].outside).toBe(true);
+    expect(c.totalSpent).toBe(0);
+    expect(c.leftFromIncome).toBe(1800);
+  });
+  it("counts it again if the line comes back", () => {
+    const back = [...lines, { id: "ff", subId: "furniture-fund", category: "Savings" as const, budgeted: 0 }];
+    const c = computePeriod("2026-11", { "2026-11": { id: "2026-11", lineItems: back, outsideBudget: ["furniture-fund"] } }, txs, s);
+    expect(c.groups.Savings.spent).toBe(2200);
+  });
+});
