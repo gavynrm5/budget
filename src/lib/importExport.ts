@@ -49,6 +49,7 @@ export function parseCategory(raw: string): Category | null {
   if (s.startsWith("essential")) return "Essentials";
   if (s.startsWith("want")) return "Wants";
   if (s.startsWith("saving") || s === "savings & debt" || s === "debt") return "Savings";
+  if (s.startsWith("tax")) return "Taxes";
   return null;
 }
 

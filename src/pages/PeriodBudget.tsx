@@ -4,7 +4,7 @@ import { listSummary } from "../lib/wishlist";
 import { Gift, Info, Pencil, Plus, Trash2 } from "lucide-react";
 import { useData } from "../store/data";
 import { useUI } from "../store/ui";
-import { computePeriod, resolveBudget, type GroupCalc, type LineCalc } from "../lib/calc";
+import { afterTaxIncome, computePeriod, resolveBudget, SPENDING_GROUPS, spendingTargetSum, type GroupCalc, type LineCalc } from "../lib/calc";
 import { currentPeriodId, isValidPeriodId, periodName } from "../lib/periods";
 import { fmt, pct } from "../lib/money";
 import { CATEGORIES, CATEGORY_LABEL, type Category, type ExtraIncome, type LineItem, type PeriodBudget as PB } from "../lib/types";
@@ -72,7 +72,7 @@ export default function PeriodBudget() {
     });
   };
 
-  const targetSum = CATEGORIES.reduce((a, c) => a + settings.targets[c], 0);
+  const targetSum = spendingTargetSum(settings);
 
   // Lines that fund a wishlist goal show its progress.
   const goals = useMemo(() => {
@@ -94,21 +94,22 @@ export default function PeriodBudget() {
       />
 
       {/* Header: income and group targets */}
-      <div className="card mb-5 grid grid-cols-2 gap-4 p-4 sm:grid-cols-4 sm:p-5">
+      <div className="card mb-5 grid grid-cols-2 gap-4 p-4 sm:grid-cols-5 sm:p-5">
         <div className="col-span-2 sm:col-span-1">
           <p className="text-sm text-muted">Income</p>
           <p className="num text-xl font-semibold">{fmt(calc.income)}</p>
+          {settings.targets.Taxes > 0 && <p className="num text-xs text-muted">{fmt(afterTaxIncome(settings))} after taxes</p>}
         </div>
         {CATEGORIES.map((c) => (
           <div key={c}>
-            <p className="text-sm text-muted">{CATEGORY_LABEL[c]} Target ({settings.targets[c]}%)</p>
+            <p className="text-sm text-muted">{CATEGORY_LABEL[c]} Target ({settings.targets[c]}%{c === "Taxes" ? "" : settings.targets.Taxes > 0 ? " after tax" : ""})</p>
             <p className="num text-xl font-semibold">{fmt(calc.groups[c].targetAmount)}</p>
           </div>
         ))}
         {targetSum !== 100 && (
-          <p className="col-span-2 text-sm text-warn sm:col-span-4">
+          <p className="col-span-2 text-sm text-warn sm:col-span-5">
             <Info size={14} className="mr-1 inline" aria-hidden />
-            Your saved targets are {CATEGORIES.map((c) => `${CATEGORY_LABEL[c]} ${settings.targets[c]}%`).join(" + ")} = {targetSum}%, not 100%. Adjust them in Settings.
+            Your saved targets are {SPENDING_GROUPS.map((c) => `${CATEGORY_LABEL[c]} ${settings.targets[c]}%`).join(" + ")} = {targetSum}% of after-tax income, not 100%. Adjust them in Settings.
           </p>
         )}
       </div>
@@ -313,7 +314,7 @@ function GroupSection({
               <div className="min-w-0 flex-1">
                 <p className="font-medium">{l.name}</p>
                 <GoalNote goal={goals.get(l.item.subId)} />
-                <p className="num text-xs text-muted">{pct(l.targetPct)} of income</p>
+                <p className="num text-xs text-muted">{pct(l.targetPct)} of {l.item.category === "Taxes" ? "income" : "after-tax income"}</p>
               </div>
               <div className="w-[130px]">
                 <MoneyInput value={saved.get(l.item.id) ?? l.item.budgeted} label={`${l.name} budgeted`} onLive={(v) => onLive(l.item.id, v)} onCommit={(v) => onCommit(l.item.id, v)} />
