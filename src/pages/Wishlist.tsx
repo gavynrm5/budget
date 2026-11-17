@@ -61,7 +61,7 @@ function Lists() {
                 <Link to={`/wishlist/${l.id}`} className="card block h-full p-4 transition-colors hover:bg-surface-2/40">
                   {thumbs.length > 0 && (
                     <div className="mb-3 grid h-24 grid-cols-4 gap-1 overflow-hidden rounded-xl">
-                      {thumbs.map((w) => <img key={w.id} src={safeImage(w.image)!} alt="" loading="lazy" className="h-24 w-full object-cover" />)}
+                      {thumbs.map((w) => <img key={w.id} referrerPolicy="no-referrer" src={safeImage(w.image)!} alt="" loading="lazy" className="h-24 w-full object-cover" />)}
                     </div>
                   )}
                   <div className="flex items-baseline justify-between gap-2">
@@ -233,7 +233,7 @@ function ItemCard({ item, list, first, last, onEdit, onMove }: { item: WishItem;
     <li className={`card flex flex-col overflow-hidden ${item.bought ? "opacity-75" : ""}`}>
       <button className="relative block aspect-[4/3] w-full bg-surface-2 text-left" onClick={onEdit} aria-label={`Edit ${item.item}`}>
         {img && !broken ? (
-          <img src={img} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setBroken(true)} />
+          <img referrerPolicy="no-referrer" src={img} alt="" loading="lazy" className="h-full w-full object-cover" onError={() => setBroken(true)} />
         ) : (
           <span className="flex h-full w-full items-center justify-center text-muted">{broken ? <ImageOff size={28} aria-hidden /> : <Sofa size={28} aria-hidden />}</span>
         )}

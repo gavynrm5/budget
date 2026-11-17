@@ -41,11 +41,12 @@ export function buildWrapUp(
   const lines: LineCalc[] = Object.values(calc.groups).flatMap((g) => g.lines);
   const variable = lines.filter((l) => !skip.has(l.item.subId));
   const leftover = round2(calc.income + calc.extraIncome - calc.totalSpent);
-  const carried = sum((wrap?.moves ?? []).filter((m) => m.kind === "carry").map((m) => m.amount));
+  // A carry that was later deleted from the next period no longer counts as moved.
+  const carried = sum((wrap?.moves ?? []).filter((m) => m.kind === "carry" && extraIncome.some((x) => x.id === m.refId)).map((m) => m.amount));
 
   const prevId = shiftPeriod(periodId, -1);
-  // Savings aren't spending here, so moving leftover into savings never looks like overspending.
-  const spentIn = (p: string) => sum(transactions.filter((t) => txPeriod(t) === p && t.category !== "Savings").map((t) => t.amount));
+  // Savings and taxes aren't everyday spending, so moving leftover into savings never looks like overspending.
+  const spentIn = (p: string) => sum(transactions.filter((t) => txPeriod(t) === p && t.category !== "Savings" && t.category !== "Taxes").map((t) => t.amount));
   const prevSpent = spentIn(prevId);
   const thisSpent = spentIn(periodId);
   const { start, end } = periodRange(periodId);

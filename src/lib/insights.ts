@@ -57,22 +57,23 @@ export function merchantKey(desc: string): string {
   return norm(desc).replace(/[#*]\s*\d+/g, "").replace(/\d{3,}/g, "").replace(/[^a-z& ]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
-/** Sub-categories tips never cover: fixed bills (matched by name) and anything under Savings & Debt. */
+/** Sub-categories tips never cover: fixed bills (matched by name) and anything under Savings & Debt or Taxes. */
 export function excludedSubs(settings: Settings): Set<string> {
   const fixed = new Set(settings.fixedExpenses.map((f) => norm(f.name)));
-  return new Set(settings.subCategories.filter((s) => s.category === "Savings" || fixed.has(norm(s.name))).map((s) => s.id));
+  return new Set(settings.subCategories.filter((s) => s.category === "Savings" || s.category === "Taxes" || fixed.has(norm(s.name))).map((s) => s.id));
 }
 
 export function buildInsights(input: InsightsInput): InsightsData {
   const { periodId, today, periods, transactions, settings, extraIncome, wishLists, wishlist } = input;
   const skip = excludedSubs(settings);
-  const variable = (t: Transaction) => !skip.has(t.subId) && t.category !== "Savings";
+  const notEveryday = (c: string) => c === "Savings" || c === "Taxes";
+  const variable = (t: Transaction) => !skip.has(t.subId) && !notEveryday(t.category);
   const daysTotal = daysInPeriod(periodId);
   const day = Math.max(1, Math.min(daysTotal, dayOfPeriod(periodId, today)));
   const daysLeft = daysTotal - day;
   const elapsed = day / daysTotal;
   const calc = computePeriod(periodId, periods, transactions, settings, extraIncome);
-  const lines: LineCalc[] = Object.values(calc.groups).flatMap((g) => g.lines).filter((l) => !skip.has(l.item.subId) && l.item.category !== "Savings");
+  const lines: LineCalc[] = Object.values(calc.groups).flatMap((g) => g.lines).filter((l) => !skip.has(l.item.subId) && !notEveryday(l.item.category));
   const subName = (id: string) => settings.subCategories.find((s) => s.id === id)?.name ?? "Other";
   const facts: Fact[] = [];
 
@@ -112,7 +113,8 @@ export function buildInsights(input: InsightsInput): InsightsData {
         (spread <= 4 || spread >= 27) // allows month-end wraparound like the 30th then the 1st
       );
     })
-    .map((list) => ({ name: list[list.length - 1].description.trim(), amount: list.sort((a, b) => b.date.localeCompare(a.date))[0].amount }))
+    .map((list) => [...list].sort((a, b) => b.date.localeCompare(a.date))[0])
+    .map((latest) => ({ name: latest.description.trim(), amount: latest.amount }))
     .sort((a, b) => b.amount - a.amount);
   const recurringKeys = new Set(subs.map((x) => merchantKey(x.name)));
   const isRecurring = (t: Transaction) => recurringKeys.has(merchantKey(t.description));
@@ -269,7 +271,9 @@ function tipFor(f: Fact): Tip {
         return { id: f.id, factIds: [f.id], tone: "warning", savings: f.overBy, title: `${f.name} is on pace to go over`, body: `At this rate it reaches about ${$(f.projected)} by the end of the period, ${$(f.overBy)} over. Keep it under ${$(f.perDayToStay)} a day for the next ${f.daysLeft} days to stay on budget.` };
       case "trend":
         return f.direction === "up"
-          ? { id: f.id, factIds: [f.id], tone: "nudge", savings: round2(f.spentSoFar - f.usualByNow), title: `${f.name} is up ${f.changePct}%`, body: `${$(f.spentSoFar)} so far, compared with about ${$(f.usualByNow)} by this point usually.` }
+          ? f.usualByNow > 0
+            ? { id: f.id, factIds: [f.id], tone: "nudge", savings: round2(f.spentSoFar - f.usualByNow), title: `${f.name} is up ${f.changePct}%`, body: `${$(f.spentSoFar)} so far, compared with about ${$(f.usualByNow)} by this point usually.` }
+            : { id: f.id, factIds: [f.id], tone: "nudge", savings: null, title: `${f.name}: ${$(f.spentSoFar)} so far`, body: `You don't usually spend here by this point in the period.` }
           : { id: f.id, factIds: [f.id], tone: "praise", savings: null, title: `${f.name} is down ${Math.abs(f.changePct)}%`, body: `${$(f.spentSoFar)} so far versus about ${$(f.usualByNow)} usually by now. Nice work.` };
       case "habit":
         return { id: f.id, factIds: [f.id], tone: "nudge", savings: round2(f.total / 2), title: `${f.count} trips to ${f.merchant}`, body: `${$(f.total)} this period, about ${$(f.average)} each. Cutting that in half would save around ${$(f.total / 2)}.` };

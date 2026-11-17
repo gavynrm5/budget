@@ -70,6 +70,8 @@ export default function WrapUpPage() {
   };
 
   const subName = (id?: string) => settings.subCategories.find((s) => s.id === id)?.name ?? "Savings";
+  // Moves whose entry was deleted afterward are no longer in effect.
+  const moves = wrap.moves.filter((m) => (m.kind === "carry" ? extraIncome.some((x) => x.id === m.refId) : transactions.some((t) => t.id === m.refId)));
 
   return (
     <>
@@ -117,11 +119,11 @@ export default function WrapUpPage() {
       )}
       {!ended && <p className="mb-5 rounded-xl bg-surface-2 px-4 py-3 text-sm text-muted">{month} isn't over yet. This is how it's looking so far; moving leftover opens once it ends.</p>}
 
-      {wrap.moves.length > 0 && (
+      {moves.length > 0 && (
         <section aria-labelledby="moved-h" className="card mb-5 p-4 sm:p-5">
           <h2 id="moved-h" className="mb-2 text-lg">Moved</h2>
           <ul className="divide-y divide-line/60 text-sm">
-            {wrap.moves.map((m) => (
+            {moves.map((m) => (
               <li key={m.refId} className="flex justify-between gap-3 py-2">
                 <span>{m.kind === "carry" ? `Carried into ${next}` : `To ${subName(m.subId)}`}</span>
                 <span className="num font-medium">{fmt(m.amount)}</span>

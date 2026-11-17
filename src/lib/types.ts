@@ -1,9 +1,10 @@
-export type Category = "Essentials" | "Wants" | "Savings";
-export const CATEGORIES: Category[] = ["Essentials", "Wants", "Savings"];
+export type Category = "Essentials" | "Wants" | "Savings" | "Taxes";
+export const CATEGORIES: Category[] = ["Essentials", "Wants", "Savings", "Taxes"];
 export const CATEGORY_LABEL: Record<Category, string> = {
   Essentials: "Essentials",
   Wants: "Wants",
-  Savings: "Savings & Debt"
+  Savings: "Savings & Debt",
+  Taxes: "Taxes"
 };
 
 /** A sub-category in the master list. `category` is its default group. */
@@ -33,6 +34,11 @@ export interface Settings {
   wishlistRooms: string[];
   /** First period shown in overviews, "YYYY-MM". */
   startPeriod: string;
+  /**
+   * Pay period from which "Taxes / Estimated" counts in its own Taxes group
+   * instead of Savings ("YYYY-MM"). Empty until that one-time move has run.
+   */
+  taxesSplitFrom: string;
   /** Free Twelve Data API key for stock prices. Empty until the user adds one. */
   twelveDataKey: string;
   /** Bank accounts and credit cards, by nickname only. */

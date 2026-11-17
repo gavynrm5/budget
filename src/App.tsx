@@ -1,9 +1,10 @@
 import { lazy, Suspense, useEffect } from "react";
-import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
+import { HashRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { isFirebaseConfigured } from "./config/firebase";
 import { UIProvider } from "./store/ui";
 import { DataProvider, useData } from "./store/data";
 import { Layout } from "./components/Layout";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { watchSystemTheme } from "./lib/theme";
 import SignIn from "./pages/SignIn";
 import { AccessDenied, NotConfigured } from "./pages/Setup";
@@ -36,6 +37,7 @@ function Skeleton() {
 
 function Gate() {
   const { authReady, user, loaded, denied } = useData();
+  const { pathname } = useLocation();
   if (!authReady) return <div className="p-6"><Skeleton /></div>;
   if (!user) return <SignIn />;
   if (denied) return <AccessDenied uid={user.uid} email={user.email} />;
@@ -44,25 +46,27 @@ function Gate() {
       {!loaded ? (
         <Skeleton />
       ) : (
-        <Suspense fallback={<Skeleton />}>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/budget" element={<PeriodBudget />} />
-            <Route path="/budget/:periodId" element={<PeriodBudget />} />
-            <Route path="/annual" element={<Annual />} />
-            <Route path="/wishlist" element={<Wishlist />} />
-            <Route path="/wishlist/:listId" element={<Wishlist />} />
-            <Route path="/accounts" element={<Accounts />} />
-            <Route path="/insights" element={<Insights />} />
-            <Route path="/search" element={<Search />} />
-            <Route path="/wrapup/:periodId" element={<WrapUpPage />} />
-            <Route path="/portfolio" element={<Portfolio />} />
-            <Route path="/portfolio/:symbol" element={<Stock />} />
-            <Route path="/planning" element={<Planning />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </Suspense>
+        <ErrorBoundary resetKey={pathname}>
+          <Suspense fallback={<Skeleton />}>
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/budget" element={<PeriodBudget />} />
+              <Route path="/budget/:periodId" element={<PeriodBudget />} />
+              <Route path="/annual" element={<Annual />} />
+              <Route path="/wishlist" element={<Wishlist />} />
+              <Route path="/wishlist/:listId" element={<Wishlist />} />
+              <Route path="/accounts" element={<Accounts />} />
+              <Route path="/insights" element={<Insights />} />
+              <Route path="/search" element={<Search />} />
+              <Route path="/wrapup/:periodId" element={<WrapUpPage />} />
+              <Route path="/portfolio" element={<Portfolio />} />
+              <Route path="/portfolio/:symbol" element={<Stock />} />
+              <Route path="/planning" element={<Planning />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       )}
     </Layout>
   );
@@ -70,14 +74,21 @@ function Gate() {
 
 export default function App() {
   useEffect(() => watchSystemTheme(), []);
+  // Once the app has run for a bit, allow the one-time "reload for a new version" again.
+  useEffect(() => {
+    const t = setTimeout(() => { try { sessionStorage.removeItem("reloaded-for-update"); } catch { /* private mode */ } }, 10_000);
+    return () => clearTimeout(t);
+  }, []);
   if (!isFirebaseConfigured) return <NotConfigured />;
   return (
-    <HashRouter>
-      <UIProvider>
-        <DataProvider>
-          <Gate />
-        </DataProvider>
-      </UIProvider>
-    </HashRouter>
+    <ErrorBoundary>
+      <HashRouter>
+        <UIProvider>
+          <DataProvider>
+            <Gate />
+          </DataProvider>
+        </UIProvider>
+      </HashRouter>
+    </ErrorBoundary>
   );
 }
