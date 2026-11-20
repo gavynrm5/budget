@@ -46,6 +46,17 @@ describe("wrap-up", () => {
     expect(w.vsPrevious?.change).toBe(370); // the $500 saved isn't counted as spending more
   });
 
+  it("still subtracts spending paid from extra money from the leftover", () => {
+    // A no-line sub marked as paid from extra money stops counting against the budget, but the money is gone.
+    const outside = { "2026-09": { ...periods["2026-09"], outsideBudget: ["gift-spend"] } };
+    const gift = tx("2026-09-26", 150, "gift-spend", "Wants", "Concert");
+    const extra = [{ id: "g", date: "2026-09-25", amount: 200, source: "Birthday", accountId: null, notes: "", allocations: [] }];
+    const w = buildWrapUp("2026-09", outside, [...txs, gift], s, extra, [], [], null);
+    expect(w.spent).toBe(2220); // 2070 + 150
+    expect(w.leftover).toBe(1980); // 4000 + 200 - 2220
+    expect(w.leftToMove).toBe(1980);
+  });
+
   it("reports goal contributions and net worth change within the period", () => {
     const fund = { id: "fund", name: "Furniture fund", category: "Savings" as const, order: 99, archived: false };
     const list: WishList = { id: "L", name: "Furniture", order: 0, subId: "fund", startingSaved: 0, goalAmount: null, targetDate: null, fields: [] };

@@ -410,8 +410,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!db || !uid || !loaded || taxesRef.current || settings.taxesSplitFrom) return;
     if (!serverSeen.current.settings || !serverSeen.current.periods || !ensuredRef.current) return;
-    taxesRef.current = true;
     const from = currentPeriodId();
+    // The roll-forward above may have only just queued this period's budget; wait
+    // until it's in state so its taxes line moves too.
+    if (!periods[from]) return;
+    taxesRef.current = true;
     const split = splitTaxes(settings, periods, transactions, from);
     const ops: { ref: DocumentReference; data?: object }[] = [
       ...split.periods.map((p) => ({ ref: base("periods", p.id), data: { lineItems: p.lineItems, outsideBudget: p.outsideBudget ?? [] } })),
