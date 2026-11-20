@@ -102,7 +102,7 @@ export function TransactionSheet() {
     if (!amountText.trim()) errs.amount = "Enter an amount.";
     else if (amountErr || amountValue === null) errs.amount = `That math does not work (${amountErr}). Try something like 29.76+5.83.`;
     else if (amountValue <= 0) errs.amount = "Amount must be greater than $0.00.";
-    if (!category) errs.category = "Pick Essentials, Wants, or Savings.";
+    if (!category) errs.category = "Pick Essentials, Wants, Savings & Debt, or Taxes.";
     else if (!subId) errs.subId = "Pick a sub-category.";
     else if (!subOptions.some((s) => s.id === subId)) errs.subId = `${subName(subId)} is not in ${CATEGORY_LABEL[category]}. Pick another.`;
     if (!date) errs.date = "Pick a date.";

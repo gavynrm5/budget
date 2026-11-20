@@ -55,7 +55,7 @@ export default function Dashboard() {
           dayOfPeriod(current, todayISO()) <= 21;
         if (!ready) return null;
         const c = computePeriod(prev, periods, transactions, settings, extraIncome);
-        const left = c.income + c.extraIncome - c.totalSpent;
+        const left = c.leftFromIncome;
         return (
           <Link to={`/wrapup/${prev}`} className="mb-4 flex items-center justify-between gap-3 rounded-2xl border border-good/40 bg-good/10 px-4 py-3 text-sm hover:bg-good/15">
             <span><strong>Your {periodName(prev)} wrap-up is ready.</strong> {left >= 0 ? `${fmt(left)} left over to put to work.` : `Spent ${fmt(-left)} more than came in.`}</span>

@@ -40,7 +40,10 @@ export function buildWrapUp(
   const skip = excludedSubs(settings);
   const lines: LineCalc[] = Object.values(calc.groups).flatMap((g) => g.lines);
   const variable = lines.filter((l) => !skip.has(l.item.subId));
-  const leftover = round2(calc.income + calc.extraIncome - calc.totalSpent);
+  // Everything that left your accounts, including spending paid from extra money
+  // (that only stops counting against the budget, it still used the money).
+  const spent = sum(calc.transactions.map((t) => t.amount));
+  const leftover = calc.leftFromIncome;
   // A carry that was later deleted from the next period no longer counts as moved.
   const carried = sum((wrap?.moves ?? []).filter((m) => m.kind === "carry" && extraIncome.some((x) => x.id === m.refId)).map((m) => m.amount));
 
@@ -56,7 +59,7 @@ export function buildWrapUp(
     periodId,
     income: calc.income,
     extraIncome: calc.extraIncome,
-    spent: calc.totalSpent,
+    spent,
     planned: round2(calc.totalBudgeted + calc.extraAllocated),
     leftover,
     leftToMove: round2(Math.max(0, leftover - carried)),

@@ -100,18 +100,19 @@ export function parseTransactionsCSV(text: string, settings: Settings, newId: ()
     }
     if (amount <= 0) return result.errors.push({ row: rowNo, message: "Amount must be greater than 0." });
     const category = parseCategory(get(idx.category));
-    if (!category) return result.errors.push({ row: rowNo, message: `Category "${get(idx.category)}" must be Essentials, Wants, or Savings.` });
+    if (!category) return result.errors.push({ row: rowNo, message: `Category "${get(idx.category)}" must be Essentials, Wants, Savings, or Taxes.` });
     const subNameRaw = get(idx.sub);
     if (!subNameRaw) return result.errors.push({ row: rowNo, message: "Sub-Category is empty." });
+    // Check the account before creating a sub-category, so a skipped row never adds one.
+    const accountRaw = get(idx.account);
+    const account = matchAccount(accountRaw, settings.accounts);
+    if (accountRaw && !account) return result.errors.push({ row: rowNo, message: `Paid With "${accountRaw}" doesn't match an account, like "Main card" or "Local checking".` });
     let sub = subs.find((s) => s.name.toLowerCase() === subNameRaw.toLowerCase());
     if (!sub) {
       sub = { id: newId(), name: subNameRaw, category, order: order++, archived: false };
       subs.push(sub);
       result.newSubs.push(sub);
     }
-    const accountRaw = get(idx.account);
-    const account = matchAccount(accountRaw, settings.accounts);
-    if (accountRaw && !account) return result.errors.push({ row: rowNo, message: `Paid With "${accountRaw}" doesn't match an account, like "Main card" or "Local checking".` });
     const isMath = /[+*/]/.test(amountRaw.replace(/^\$/, "")) || /\d\s*-\s*\d/.test(amountRaw);
     result.ready.push({
       id: newId(),

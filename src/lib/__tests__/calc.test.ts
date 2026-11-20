@@ -5,6 +5,7 @@ import { evaluate } from "../expr";
 import { daysInPeriod, periodOfDate, periodRangeLabel, shiftPeriod } from "../periods";
 import { evaluatePlan } from "../planning";
 import { normalizeDate } from "../csv";
+import { parseTransactionsCSV } from "../importExport";
 import type { LineItem, PeriodBudget, Transaction } from "../types";
 
 const s = defaultSettings();
@@ -130,6 +131,15 @@ describe("planning and csv", () => {
   it("normalizes dates", () => {
     expect(normalizeDate("3/5/2026")).toBe("2026-03-05");
     expect(normalizeDate("2026-02-30")).toBeNull();
+  });
+  it("doesn't create sub-categories for CSV rows that are skipped", () => {
+    let id = 0;
+    const csv = "Date,Amount,Category,Sub-Category,Description,Notes,Paid With\n2026-03-16,12,Wants,Arcade,,,Nope card\n2026-03-17,8,Taxes,Taxes / Estimated,,,\n";
+    const r = parseTransactionsCSV(csv, defaultSettings(), () => `n${++id}`);
+    expect(r.errors).toHaveLength(1);
+    expect(r.newSubs).toEqual([]);
+    expect(r.ready).toHaveLength(1);
+    expect(r.ready[0]).toMatchObject({ category: "Taxes", subId: "taxes" });
   });
 });
 
