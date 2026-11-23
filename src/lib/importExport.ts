@@ -130,6 +130,49 @@ export function parseTransactionsCSV(text: string, settings: Settings, newId: ()
   return result;
 }
 
+export interface DuplicateCheck {
+  /** Rows with no match in what's already logged. */
+  fresh: Transaction[];
+  /** Same date and amount as something already logged. Skipped. */
+  duplicates: { row: Transaction; match: Transaction }[];
+  /** Same amount within a few days, like a purchase typed in by hand that the bank posted later. Skipped unless picked. */
+  possible: { row: Transaction; match: Transaction }[];
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const daysApart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / DAY_MS;
+
+/**
+ * Sorts imported rows against what's already logged. Each logged entry can
+ * match only one row, so two real $5 coffees on the same day still import if
+ * only one was logged. Descriptions aren't compared because bank wording
+ * ("WALMART #1234") rarely matches what's typed by hand.
+ */
+export function findDuplicates(rows: Transaction[], existing: Transaction[], windowDays = 3): DuplicateCheck {
+  const out: DuplicateCheck = { fresh: [], duplicates: [], possible: [] };
+  const byAmount = new Map<number, Transaction[]>();
+  for (const t of existing) {
+    const k = Math.round(t.amount * 100);
+    byAmount.set(k, [...(byAmount.get(k) ?? []), t]);
+  }
+  const take = (k: number, t: Transaction) => byAmount.set(k, byAmount.get(k)!.filter((x) => x !== t));
+  // Exact matches first, so a near match never takes an entry an exact one needed.
+  const left: Transaction[] = [];
+  for (const row of rows) {
+    const k = Math.round(row.amount * 100);
+    const match = byAmount.get(k)?.find((t) => t.date === row.date);
+    if (match) { take(k, match); out.duplicates.push({ row, match }); } else left.push(row);
+  }
+  for (const row of left) {
+    const k = Math.round(row.amount * 100);
+    const match = (byAmount.get(k) ?? [])
+      .filter((t) => daysApart(t.date, row.date) <= windowDays)
+      .sort((a, b) => daysApart(a.date, row.date) - daysApart(b.date, row.date))[0];
+    if (match) { take(k, match); out.possible.push({ row, match }); } else out.fresh.push(row);
+  }
+  return out;
+}
+
 export const SAMPLE_CSV = toCSV(TX_HEADERS, [
   ["2026-03-16", "35.59", "Essentials", "Groceries", "Walmart", "29.76+5.83"],
   ["2026-03-18", "2.99", "Wants", "Entertainment & Subscriptions", "iCloud", ""],

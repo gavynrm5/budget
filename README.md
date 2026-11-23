@@ -156,6 +156,7 @@ It opens full screen like a native app. On iPhone, the home screen app keeps its
    - **Sub-Category:** matched by name. Unknown names become new sub-categories under that category.
 2. Export it as CSV (File > Download > CSV in Google Sheets, or Save As > CSV in Excel).
 3. In the app: **Settings > Backup and import > Import transactions CSV**. You get a preview with any problem rows listed before anything is saved.
+   - **Duplicates are skipped.** A row with the same date and amount as something already logged isn't imported again, so overlapping imports are safe. A row with the same amount within 3 days (like a purchase you typed in that the bank posted later) is listed as a possible duplicate and skipped unless you check it.
 
 `sample-transactions.csv` in this project shows the format, and **Settings > CSV template** downloads the same thing.
 

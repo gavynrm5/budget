@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { Archive, ArchiveRestore, ArrowDown, ArrowUp, Copy, Download, FileUp, LogOut, Plus, Trash2, TriangleAlert } from "lucide-react";
 import { useData, type Backup } from "../store/data";
 import { useUI } from "../store/ui";
@@ -6,7 +6,7 @@ import { signOut } from "../lib/firebase";
 import { fmt, round2, sum } from "../lib/money";
 import { RECOMMENDED_RANGES } from "../lib/defaults";
 import { download } from "../lib/csv";
-import { parseTransactionsCSV, SAMPLE_CSV, transactionsToCSV, wishlistToCSV, type CsvImportResult } from "../lib/importExport";
+import { findDuplicates, parseTransactionsCSV, SAMPLE_CSV, transactionsToCSV, wishlistToCSV, type CsvImportResult } from "../lib/importExport";
 import { afterTaxIncome, applyFixedExpenses, resolveBudget, SPENDING_GROUPS, spendingTargetSum, targetBase } from "../lib/calc";
 import { currentPeriodId, isValidPeriodId, periodName } from "../lib/periods";
 import { getTheme, setTheme, type ThemePref } from "../lib/theme";
@@ -30,6 +30,8 @@ export default function Settings() {
   const { toast, confirm, deleteWithUndo } = useUI();
   const [theme, setThemeState] = useState<ThemePref>(getTheme());
   const [csvResult, setCsvResult] = useState<CsvImportResult | null>(null);
+  // Possible duplicates the user chose to import anyway, by row id.
+  const [includeMaybe, setIncludeMaybe] = useState<Set<string>>(new Set());
   const jsonRef = useRef<HTMLInputElement>(null);
   const csvRef = useRef<HTMLInputElement>(null);
 
@@ -110,11 +112,21 @@ export default function Settings() {
     setCsvResult(parseTransactionsCSV(await file.text(), settings, data.newId));
   };
 
+  // Checked once when the file is picked, against what was logged at that moment.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const dupes = useMemo(() => (csvResult ? findDuplicates(csvResult.ready, data.transactions) : null), [csvResult]);
+  const toImport = dupes ? [...dupes.fresh, ...dupes.possible.filter((p) => includeMaybe.has(p.row.id)).map((p) => p.row)] : [];
+
+  const closeCsv = () => { setCsvResult(null); setIncludeMaybe(new Set()); };
+
   const doCsvImport = async () => {
-    if (!csvResult) return;
-    await data.addTransactions(csvResult.ready, csvResult.newSubs);
-    toast({ message: `Imported ${csvResult.ready.length} transactions`, detail: fmt(sum(csvResult.ready.map((t) => t.amount))), tone: "good" });
-    setCsvResult(null);
+    if (!csvResult || !toImport.length) return;
+    // Only create new sub-categories that an imported row actually uses.
+    const used = new Set(toImport.map((t) => t.subId));
+    await data.addTransactions(toImport, csvResult.newSubs.filter((s) => used.has(s.id)));
+    const skipped = csvResult.ready.length - toImport.length;
+    toast({ message: `Imported ${toImport.length} transactions`, detail: `${fmt(sum(toImport.map((t) => t.amount)))}${skipped ? `, ${skipped} duplicate${skipped === 1 ? "" : "s"} skipped` : ""}`, tone: "good" });
+    closeCsv();
   };
 
   const copyUid = async () => {
@@ -319,16 +331,56 @@ export default function Settings() {
       {csvResult && (
         <Sheet
           title="Import transactions"
-          onClose={() => setCsvResult(null)}
+          onClose={closeCsv}
           footer={
             <div className="flex justify-end gap-2">
-              <button className="btn-outline" onClick={() => setCsvResult(null)}>Cancel</button>
-              <button className="btn-primary" disabled={!csvResult.ready.length} onClick={doCsvImport}>Import {csvResult.ready.length}</button>
+              <button className="btn-outline" onClick={closeCsv}>Cancel</button>
+              <button className="btn-primary" disabled={!toImport.length} onClick={doCsvImport}>Import {toImport.length}</button>
             </div>
           }
         >
           <div className="space-y-3">
-            <p><strong className="num">{csvResult.ready.length}</strong> rows are ready, totaling <strong className="num">{fmt(sum(csvResult.ready.map((t) => t.amount)))}</strong>.</p>
+            <p><strong className="num">{toImport.length}</strong> {toImport.length === 1 ? "row is" : "rows are"} ready, totaling <strong className="num">{fmt(sum(toImport.map((t) => t.amount)))}</strong>.</p>
+            {dupes && dupes.duplicates.length > 0 && (
+              <details className="rounded-xl bg-surface-2 p-3 text-sm">
+                <summary className="cursor-pointer font-medium">{dupes.duplicates.length} already logged, skipped</summary>
+                <p className="mt-1 text-muted">Same date and amount as an entry you already have.</p>
+                <ul className="mt-2 max-h-48 divide-y divide-line/60 overflow-y-auto">
+                  {dupes.duplicates.map(({ row, match }) => (
+                    <li key={row.id} className="flex justify-between gap-3 py-1.5">
+                      <span className="min-w-0 truncate">{row.date} · {row.description || "No description"} <span className="text-muted">(matches "{match.description || "no description"}")</span></span>
+                      <span className="num shrink-0">{fmt(row.amount)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {dupes && dupes.possible.length > 0 && (
+              <div className="rounded-xl bg-warn/10 p-3 text-sm">
+                <p className="font-medium">{dupes.possible.length} possible duplicate{dupes.possible.length === 1 ? "" : "s"}</p>
+                <p className="mb-2 text-muted">Same amount as an entry a few days apart, often a purchase you typed in that the bank posted later. Skipped unless you check it.</p>
+                <ul className="max-h-60 divide-y divide-line/60 overflow-y-auto">
+                  {dupes.possible.map(({ row, match }) => (
+                    <li key={row.id}>
+                      <label className="flex min-h-[44px] cursor-pointer items-center gap-3 py-1.5">
+                        <input
+                          type="checkbox"
+                          className="h-5 w-5 accent-[rgb(var(--primary))]"
+                          checked={includeMaybe.has(row.id)}
+                          onChange={(e) => setIncludeMaybe((cur) => { const n = new Set(cur); if (e.target.checked) n.add(row.id); else n.delete(row.id); return n; })}
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{row.date} · {row.description || "No description"}</span>
+                          <span className="block truncate text-xs text-muted">You have {match.date} · {match.description || "no description"}</span>
+                        </span>
+                        <span className="num shrink-0">{fmt(row.amount)}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-1 text-xs text-muted">Check one to import it anyway.</p>
+              </div>
+            )}
             {csvResult.newSubs.length > 0 && (
               <p className="text-sm text-muted">New sub-categories will be created: {csvResult.newSubs.map((s) => `${s.name} (${CATEGORY_LABEL[s.category]})`).join(", ")}.</p>
             )}
