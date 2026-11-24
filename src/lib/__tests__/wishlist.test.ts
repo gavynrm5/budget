@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { asUrl, contributedIn, fundSub, legacyToList, LEGACY_FUND_ID, LEGACY_LIST_ID, listSummary, safeImage } from "../wishlist";
+import { asUrl, contributedIn, fundSub, isWant, legacyToList, LEGACY_FUND_ID, LEGACY_LIST_ID, listSummary, safeImage, wantProgress } from "../wishlist";
 import { defaultSettings } from "../defaults";
 import type { Transaction, WishItem, WishList } from "../types";
 
@@ -94,5 +94,36 @@ describe("links and images", () => {
     expect(asUrl("https://ikea.com")).toBe("https://ikea.com");
     expect(asUrl("javascript:alert(1)")).toBeNull();
     expect(asUrl("Wayfair")).toBeNull();
+  });
+});
+
+describe("wants progress", () => {
+  const L = list({ startingSaved: 0, fields: [{ id: "f-status", name: "Status", options: ["Idea", "Want", "Ordered"] }] });
+  const want = (id: string, price: number, order: number, p: Partial<WishItem> = {}) => item({ id, price, order, values: { "f-status": "Want" }, ...p });
+  const items = [
+    want("sofa", 1200, 0),
+    want("lamp", 300, 1),
+    item({ id: "rug", price: 500, order: 2, values: { "f-status": "Idea" } }),
+    want("desk", 400, 3, { bought: true })
+  ];
+  const txs = [tx(2000, "2026-11-20")];
+
+  it("only counts items marked Want that aren't bought", () => {
+    expect(items.filter((w) => isWant(w, L)).map((w) => w.id)).toEqual(["sofa", "lamp"]);
+  });
+  it("uses savings left after bought items, filling wants in list order", () => {
+    const w = wantProgress(L, items, listSummary(L, items, txs, "2026-11"));
+    expect(w.total).toBe(1500);
+    expect(w.available).toBe(1600); // 2000 saved - 400 desk already bought
+    expect(w.covered).toBe(1500);
+    expect(w.left).toBe(0);
+    expect(w.byItem.get("sofa")).toEqual({ covered: 1200, total: 1200 });
+  });
+  it("shows partial coverage on the next want in line", () => {
+    const w = wantProgress(L, items, listSummary(L, items, [tx(1400, "2026-11-20")], "2026-11"));
+    expect(w.available).toBe(1000);
+    expect(w.byItem.get("sofa")).toEqual({ covered: 1000, total: 1200 });
+    expect(w.byItem.get("lamp")).toEqual({ covered: 0, total: 300 });
+    expect(w.progress).toBeCloseTo(1000 / 1500);
   });
 });
