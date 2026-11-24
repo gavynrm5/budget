@@ -5,7 +5,7 @@ import { useData } from "../store/data";
 import { useUI } from "../store/ui";
 import { fmt, pct } from "../lib/money";
 import { currentPeriodId, formatDate } from "../lib/periods";
-import { asUrl, itemTotal, listSummary, safeImage, type ListSummary } from "../lib/wishlist";
+import { asUrl, itemTotal, listSummary, safeImage, wantProgress, type ListSummary } from "../lib/wishlist";
 import type { WishItem, WishList } from "../lib/types";
 import { EmptyState, PageHeader } from "../components/ui";
 import { ItemSheet, ListSheet } from "../components/WishlistSheets";
@@ -15,9 +15,9 @@ export default function Wishlist() {
   return listId ? <ListPage listId={listId} /> : <Lists />;
 }
 
-function Progress({ value, label }: { value: number; label: string }) {
+function Progress({ value, label, thin }: { value: number; label: string; thin?: boolean }) {
   return (
-    <div className="h-2.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-label={label} aria-valuenow={Math.round(value * 100)} aria-valuemin={0} aria-valuemax={100}>
+    <div className={`${thin ? "h-1.5" : "h-2.5"} overflow-hidden rounded-full bg-surface-2`} role="progressbar" aria-label={label} aria-valuenow={Math.round(value * 100)} aria-valuemin={0} aria-valuemax={100}>
       <div className="h-full rounded-full bg-primary transition-[width] duration-300" style={{ width: `${value * 100}%` }} />
     </div>
   );
@@ -106,6 +106,7 @@ function ListPage({ listId }: { listId: string }) {
     );
   }
   const s = listSummary(list, wishlist, transactions, currentPeriodId());
+  const wants = wantProgress(list, wishlist, s);
   const pace = paceText(s, list.targetDate);
   const fund = list.subId ? settings.subCategories.find((x) => x.id === list.subId) : undefined;
   const rows = items.filter(
@@ -151,6 +152,22 @@ function ListPage({ listId }: { listId: string }) {
         </div>
         <div className="mt-4"><Progress value={s.progress} label={`${list.name} saved toward goal`} /></div>
         {pace && <p className="mt-2 text-sm text-muted">{pace}</p>}
+        {wants.count > 0 && (
+          <div className="mt-4 border-t border-line pt-3">
+            <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-x-3 text-sm">
+              <span className="font-medium">Wants ({wants.count})</span>
+              <span className="num text-muted">
+                <strong className="text-ink">{fmt(wants.covered)}</strong> of {fmt(wants.total)}
+                {wants.left > 0 ? `, ${fmt(wants.left)} to go` : ", all covered"}
+              </span>
+            </div>
+            <Progress value={wants.progress} label={`Saved toward items marked Want in ${list.name}`} />
+            <p className="mt-1.5 text-xs text-muted">
+              {s.boughtTotal > 0 ? `${fmt(s.saved)} saved, less ${fmt(s.boughtTotal)} already bought, leaves ${fmt(wants.available)}. ` : ""}
+              Covers your wants top to bottom in list order.
+            </p>
+          </div>
+        )}
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line pt-3 text-sm">
           {fund ? (
             <>
@@ -199,7 +216,7 @@ function ListPage({ listId }: { listId: string }) {
       ) : (
         <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map((w, i) => (
-            <ItemCard key={w.id} item={w} list={list} first={i === 0} last={i === rows.length - 1} onEdit={() => setItemSheet(w)} onMove={(d) => move(w, d)} />
+            <ItemCard key={w.id} item={w} list={list} want={wants.byItem.get(w.id)} first={i === 0} last={i === rows.length - 1} onEdit={() => setItemSheet(w)} onMove={(d) => move(w, d)} />
           ))}
         </ul>
       )}
@@ -218,7 +235,7 @@ function BackLink() {
   );
 }
 
-function ItemCard({ item, list, first, last, onEdit, onMove }: { item: WishItem; list: WishList; first: boolean; last: boolean; onEdit: () => void; onMove: (d: -1 | 1) => void }) {
+function ItemCard({ item, list, want, first, last, onEdit, onMove }: { item: WishItem; list: WishList; want?: { covered: number; total: number }; first: boolean; last: boolean; onEdit: () => void; onMove: (d: -1 | 1) => void }) {
   const { saveWish } = useData();
   const [broken, setBroken] = useState(false);
   const img = safeImage(item.image);
@@ -252,6 +269,14 @@ function ItemCard({ item, list, first, last, onEdit, onMove }: { item: WishItem;
         {chips.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1">
             {chips.map((c, k) => <span key={k} className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">{c}</span>)}
+          </div>
+        )}
+        {want && (
+          <div className="mt-2">
+            <Progress thin value={want.total > 0 ? want.covered / want.total : 0} label={`Saved toward ${item.item}`} />
+            <p className={`num mt-1 text-xs ${want.covered >= want.total ? "font-medium text-good" : "text-muted"}`}>
+              {want.covered >= want.total ? "Fully saved for" : `${fmt(want.covered)} of ${fmt(want.total)} saved`}
+            </p>
           </div>
         )}
         {item.notes && <p className="mt-1.5 line-clamp-2 text-sm text-muted">{item.notes}</p>}

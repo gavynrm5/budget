@@ -53,6 +53,49 @@ export function listSummary(list: WishList, items: WishItem[], txs: Transaction[
   };
 }
 
+/** True for an item not yet bought whose dropdown choice (like Status) is "Want". */
+export function isWant(item: WishItem, list: WishList): boolean {
+  return !item.bought && list.fields.some((f) => (item.values?.[f.id] ?? "").trim().toLowerCase() === "want");
+}
+
+export interface WantProgress {
+  count: number;
+  total: number;
+  /** Saved, less what bought items already used. */
+  available: number;
+  /** Part of `total` that `available` covers. */
+  covered: number;
+  left: number;
+  progress: number; // 0 to 1
+  /** How much of each want is covered, filling them top to bottom in list order. */
+  byItem: Map<string, { covered: number; total: number }>;
+}
+
+/** Savings toward the items marked Want, after paying for what's already bought. */
+export function wantProgress(list: WishList, items: WishItem[], summary: ListSummary): WantProgress {
+  const wants = items.filter((w) => w.listId === list.id && isWant(w, list)).sort((a, b) => a.order - b.order);
+  const total = sum(wants.map(itemTotal));
+  const available = round2(Math.max(0, summary.saved - summary.boughtTotal));
+  const byItem = new Map<string, { covered: number; total: number }>();
+  let pool = available;
+  for (const w of wants) {
+    const t = itemTotal(w);
+    const c = round2(Math.min(t, pool));
+    pool = round2(pool - c);
+    byItem.set(w.id, { covered: c, total: t });
+  }
+  const covered = round2(Math.min(total, available));
+  return {
+    count: wants.length,
+    total,
+    available,
+    covered,
+    left: round2(total - covered),
+    progress: total > 0 ? covered / total : 0,
+    byItem
+  };
+}
+
 /** Contributions to a list during one pay period. */
 export function contributedIn(list: WishList, txs: Transaction[], periodId: string): number {
   return list.subId ? sum(txs.filter((t) => t.subId === list.subId && txPeriod(t) === periodId).map((t) => t.amount)) : 0;
